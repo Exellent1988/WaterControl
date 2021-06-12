@@ -43,9 +43,9 @@ void measureSoil() {
   measuredVal = analogRead(sensorPin);
   soilMoisturePercent = map(measuredVal, airVal, waterVal, 0, 100);
   if (soilMoisturePercent > 100) {
-    logfunction("Error: Moisture too high! Please calibrate.");
+    logfunction("Error: Moisture too high: "+ String(measuredVal)+"! Please calibrate." );
   } else if (soilMoisturePercent < 0) {
-    logfunction("Error: Moisture too low! Please calibrate.");
+    logfunction("Error: Moisture too low: "+ String(measuredVal)+"! Please calibrate.");
   } else if (soilMoisturePercent <= 100 &&soilMoisturePercent >= 0) {
     Serial.print("Feuchtigkeit: ");
     Serial.print(soilMoisturePercent);
@@ -268,8 +268,8 @@ void setup(void) {
     * password, for example begin("ESPUI Control", "username", "password")
     */
 
-  ESPUI.setVerbosity(Verbosity::VerboseJSON);
-  ESPUI.beginSPIFFS("DRF WaterControl");
+  ESPUI.setVerbosity(Verbosity::Verbose);
+  ESPUI.beginSPIFFS("DFR25\n WaterControl");
 }
 
 void loop(void) {
