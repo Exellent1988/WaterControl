@@ -17,20 +17,18 @@ const char * ssid = "SWN.NET-1O5ZS3T2";
 const char * APId = "ESP-WaterControl";
 const char * password = "32133425607603846915";
 const char * hostname = "ESP-WaterControl";
-String Sbuffer = "----------------";
-uint16_t button1;
-uint16_t button2;
-uint16_t button3;
-uint16_t switchOne;
+uint16_t valve0;
+uint16_t valve1;
+uint16_t valve2;
+uint16_t valve3;
 uint16_t status;
 uint16_t LOG;
-int graphId;
-int gauge1;
+uint16_t graphId;
+uint16_t gauge1;
 int airVal = 3478;
 int waterVal = 1326;
 const int sensorPin = 34;
 int measuredVal = 0;
-
 int soilMoisturePercent = 0;
 int previousSoilMoisturePercent = 0;
 
@@ -66,7 +64,7 @@ void rawVals(Control * sender, int value) {
   measuredVal = analogRead(sensorPin);
 
   Serial.print("Current value: ");
-  Serial.println(waterVal);
+  Serial.println(measuredVal);
 
   Serial.print("Current Air value: ");
   Serial.println(airVal);
@@ -79,28 +77,29 @@ void rawVals(Control * sender, int value) {
 
 
 void measureAir(Control * sender, int type) {
-    switch (type) {
-      case B_DOWN:
-        measuredVal = analogRead(sensorPin);
-        airVal = measuredVal;
-        logfunction("NEW AIR value: " + String(airVal));
-        delay(250);
-        break;
-    }
+  switch (type) {
+    case B_DOWN:
+      measuredVal = analogRead(sensorPin);
+      airVal = measuredVal;
+      logfunction("NEW AIR value: " + String(airVal));
+      delay(250);
+      break;
+  }
 }
 
 void measureWater(Control * sender, int type) {
-    switch (type) {
-      case B_DOWN:
-        measuredVal = analogRead(sensorPin);
-        waterVal = measuredVal;
-        logfunction("NEW WATER value: " + String(waterVal));
-        delay(250);
-        break;
-    }
+  switch (type) {
+    case B_DOWN:
+      measuredVal = analogRead(sensorPin);
+      waterVal = measuredVal;
+      logfunction("NEW WATER value: " + String(waterVal));
+      delay(250);
+      break;
+  }
 }
 
 void clearGraph(Control * sender, int type) {
+  logfunction("Graph should be clean now");
   ESPUI.clearGraph(graphId);
 
 }
@@ -123,34 +122,22 @@ void slider(Control * sender, int type) {
   Serial.println(sender->value);
 }
 
-void buttonCallback(Control * sender, int type) {
+
+
+void ValveFunction(Control * sender, int type) {
   switch (type) {
     case B_DOWN:
-      Serial.println("Button DOWN");
+      logfunction(String(sender->label)+": OPEN");
+      ESPUI.getControl(sender->id)->color =  ControlColor::Carrot;
+      ESPUI.getControl(sender->id)->value = "OPEN";
+      ESPUI.updateControl(sender->id);
       break;
 
     case B_UP:
-      Serial.println("Button UP");
-      break;
-  }
-}
-
-void buttonExample(Control * sender, int type) {
-  switch (type) {
-    case B_DOWN:
-      Serial.println("Status: Start");
-      ESPUI.updateControlValue(status, "Start");
-
-      ESPUI.getControl(button1)->color = ControlColor::Carrot;
-      ESPUI.updateControl(button1);
-      break;
-
-    case B_UP:
-      Serial.println("Status: Stop");
-      ESPUI.updateControlValue(status, "Stop");
-
-      ESPUI.getControl(button1)->color = ControlColor::Peterriver;
-      ESPUI.updateControl(button1);
+       logfunction(String(sender->label)+": CLOSE");
+      ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
+      ESPUI.getControl(sender->id)->value = "CLOSE";
+      ESPUI.updateControl(sender->id);
       break;
   }
 }
@@ -247,14 +234,15 @@ void setup(void) {
   gauge1 = ESPUI.addControl(ControlType::Gauge, "Sensor1", "Humidity:", ControlColor::Carrot, tab1);
   ESPUI.addControl(ControlType::Button, "Clear Graph", "Clear", ControlColor::Peterriver, tab1, &clearGraph);
 
-  button1 = ESPUI.addControl(ControlType::Button, "Calibrate ( in Air )", "Press", ControlColor::Peterriver, tab2, &measureAir);
-  button2 = ESPUI.addControl(ControlType::Button, "Calibrate ( in Water )", "Press", ControlColor::Alizarin, tab2, &measureWater);
-  button3 = ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
+  ESPUI.addControl(ControlType::Button, "Calibrate ( in Air )", "Press", ControlColor::Peterriver, tab2, &measureAir);
+  ESPUI.addControl(ControlType::Button, "Calibrate ( in Water )", "Press", ControlColor::Alizarin, tab2, &measureWater);
+  ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
 
 
-  ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &buttonExample);
-  ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &buttonExample);
-  ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &buttonExample);
+  ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
   // ESPUI.addControl( ControlType::PadWithCenter, "Pad with center", "", ControlColor::Sunflower, tab2, &padExample );
   // ESPUI.addControl( ControlType::Pad, "Pad without center", "", ControlColor::Carrot, tab3, &padExample );
   // switchOne = ESPUI.addControl( ControlType::Switcher, "Switch one", "", ControlColor::Alizarin, tab3, &switchExample );
@@ -280,8 +268,8 @@ void setup(void) {
     * password, for example begin("ESPUI Control", "username", "password")
     */
 
-
-  ESPUI.begin("DRF WaterControl");
+  ESPUI.setVerbosity(Verbosity::VerboseJSON);
+  ESPUI.beginSPIFFS("DRF WaterControl");
 }
 
 void loop(void) {
