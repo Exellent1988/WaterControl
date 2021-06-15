@@ -26,17 +26,21 @@ uint16_t LOG;
 uint16_t graphId;
 uint16_t gauge1;
 int pin = 0;
+int beregnungs_stop[] = {80,80,80,80,80};
+int beregnung_ab[] = {30, 30,30,30,30};
+int max_beregnung[] = {10*60*1000, 10*60*1000, 10*60*1000, 10*60*1000};
 int measuredVal = 0;
 int soilMoisturePercent = 0;
 int previousSoilMoisturePercent = 0;
 
 #if defined(ESP32)
   const int sensorPin = 34;
+  int relayPin[] = {32,33,25,26};
   int airVal = 3478;
   int waterVal = 772;
 #else
   const int sensorPin = A0;
-  int relayPin[] = {16,14,12,13};
+  int relayPin[] = {D0,D5,D6,D7};
   int airVal = 300;
   int waterVal = 1326;
 
@@ -74,15 +78,12 @@ void rawVals(Control * sender, int value) {
 
   measuredVal = analogRead(sensorPin);
 
-  Serial.print("Current value: ");
-  Serial.println(measuredVal);
-
+  logfunction("Current value: "+ String(measuredVal));
   Serial.print("Current Air value: ");
   Serial.println(airVal);
   Serial.print("Current Water value: ");
   Serial.println(waterVal);
-
-  delay(250);
+  
 
 }
 
@@ -93,7 +94,7 @@ void measureAir(Control * sender, int type) {
       measuredVal = analogRead(sensorPin);
       airVal = measuredVal;
       logfunction("NEW AIR value: " + String(airVal));
-      delay(250);
+      
       break;
   }
 }
@@ -104,7 +105,6 @@ void measureWater(Control * sender, int type) {
       measuredVal = analogRead(sensorPin);
       waterVal = measuredVal;
       logfunction("NEW WATER value: " + String(waterVal));
-      delay(250);
       break;
   }
 }
@@ -115,84 +115,75 @@ void clearGraph(Control * sender, int type) {
 
 }
 
-void numberCall(Control * sender, int value) {
-  Serial.println(sender->value);
+void slider1_max(Control * sender, int type) {
+  beregnungs_stop[0] = sender->value.toInt();
 }
-
-void textCall(Control * sender, int type) {
-  Serial.print("Text: ID: ");
-  Serial.print(sender->id);
-  Serial.print(", Value: ");
-  Serial.println(sender->value);
+void slider1_min(Control * sender, int type) {
+  beregnung_ab[0] = sender->value.toInt();
 }
-
-void slider(Control * sender, int type) {
-  Serial.print("Slider: ID: ");
-  Serial.print(sender->id);
-  Serial.print(", Value: ");
-  Serial.println(sender->value);
+void slider2_max(Control * sender, int type) {
+  beregnungs_stop[1] = sender->value.toInt();
 }
-
+void slider2_min(Control * sender, int type) {
+  beregnung_ab[1] = sender->value.toInt();
+}
+void slider3_max(Control * sender, int type) {
+  beregnungs_stop[2] = sender->value.toInt();
+}
+void slider3_min(Control * sender, int type) {
+  beregnung_ab[2] = sender->value.toInt();
+}
+void slider4_max(Control * sender, int type) {
+  beregnungs_stop[3] = sender->value.toInt();
+}
+void slider4_min(Control * sender, int type) {
+  beregnung_ab[3] = sender->value.toInt();
+}
+void max_raintime(Control * sender, int type) {
+  max_beregnung[0] = sender->value.toInt()*60*1000;
+}
 
 
 void ValveFunction(Control * sender, int type) {
   switch (type) {
     case B_DOWN:
-      logfunction(String(sender->id)+String(sender->label)+": OPEN");
+      pin = relayPin[(sender->id)-13];
+      if (digitalRead(pin) == HIGH){
+        ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
+        ESPUI.getControl(sender->id)->value = "CLOSE";
+        ESPUI.updateControl(sender->id);
+        digitalWrite(pin, LOW);
+
+      }
+      else{
+   // logfunction(String(sender->id)+String(sender->label)+": OPEN");
       ESPUI.getControl(sender->id)->color =  ControlColor::Carrot;
       ESPUI.getControl(sender->id)->value = "OPEN";
       ESPUI.updateControl(sender->id);
-      pin = relayPin[(sender->id)-13];
-      logfunction("Switch Pin "+String(pin));
       digitalWrite(pin, HIGH);
+      }
+      // logfunction("Switch Pin "+String(pin));
      break;
-
-    case B_UP:
-      logfunction(String(sender->id)+String(sender->label)+": CLOSE");
-      ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
-      ESPUI.getControl(sender->id)->value = "CLOSE";
-      ESPUI.updateControl(sender->id);
-      pin = relayPin[(sender->id)-13];
-      logfunction("Switch Pin "+String(pin));
-      digitalWrite(pin, LOW);
-    break;
-  }
+ }
 }
 
-void selectExample(Control * sender, int value) {
-  Serial.print("Select: ID: ");
-  Serial.print(sender->id);
-  Serial.print(", Value: ");
-  Serial.println(sender->value);
-}
 
-void otherSwitchExample(Control * sender, int value) {
-  switch (value) {
-    case S_ACTIVE:
-      Serial.print("Active:");
-      break;
 
-    case S_INACTIVE:
-      Serial.print("Inactive");
-      break;
-  }
-
-    Serial.print(" ");
-    Serial.println(sender->id);
-  }
 
 void setup(void) {
   Serial.begin(115200);
+  // SETUP Pin Modes 
+  pinMode(sensorPin, INPUT);
+  // for (int i=0; i< sizeof(relayPin); i++) {
+  // pinMode(relayPin[i], OUTPUT);
+  // }
+
   #if defined(ESP32)
   WiFi.setHostname(hostname);
   #else
     WiFi.hostname(hostname);
   #endif
   
-
-  for (int i=0; i< sizeof(relayPin); i++) {
-  pinMode(relayPin[i], OUTPUT);
-  }
 
   // try to connect to existing network
   WiFi.begin(ssid, password);
@@ -236,9 +227,12 @@ void setup(void) {
 
   uint16_t tab0 = ESPUI.addControl(ControlType::Tab, "Control", "Control");
   uint16_t tab1 = ESPUI.addControl(ControlType::Tab, "LiveData", "Data");
-
   uint16_t tab2 = ESPUI.addControl(ControlType::Tab, "Calibration", "Calibration");
-  uint16_t tab3 = ESPUI.addControl(ControlType::Tab, "Configuration", "Setttings");
+  // uint16_t tab3 = ESPUI.addControl(ControlType::Tab, "Configuration", "Setttings");
+  uint16_t tab4 = ESPUI.addControl(ControlType::Tab, "Configuration Z1", "ZONE 1");
+  uint16_t tab5 = ESPUI.addControl(ControlType::Tab, "Configuration Z2", "ZONE 2");
+  uint16_t tab6 = ESPUI.addControl(ControlType::Tab, "Configuration Z3", "ZONE 3");
+  uint16_t tab7 = ESPUI.addControl(ControlType::Tab, "Configuration Z4", "ZONE 4");
 
   // shown above all tabs
   status = ESPUI.addControl(ControlType::Label, "Status:", "All fine", ControlColor::Turquoise);
@@ -261,18 +255,30 @@ void setup(void) {
   ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
 
 
-  uint16_t valve0 = ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  uint16_t valve1 = ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  uint16_t valve2 = ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  uint16_t valve3 = ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  // ESPUI.addControl( ControlType::PadWithCenter, "Pad with center", "", ControlColor::Sunflower, tab2, &padExample );
-  // ESPUI.addControl( ControlType::Pad, "Pad without center", "", ControlColor::Carrot, tab3, &padExample );
-  // switchOne = ESPUI.addControl( ControlType::Switcher, "Switch one", "", ControlColor::Alizarin, tab3, &switchExample );
-  // ESPUI.addControl( ControlType::Switcher, "Switch two", "", ControlColor::None, tab3, &otherSwitchExample );
-  ESPUI.addControl(ControlType::Slider, "Slider one", "30", ControlColor::Alizarin, tab3, &slider);
-  ESPUI.addControl(ControlType::Slider, "Slider two", "100", ControlColor::Alizarin, tab3, &slider);
-  ESPUI.addControl(ControlType::Number, "Number:", "50", ControlColor::Alizarin, tab3, &numberCall);
+  // uint16_t valve0 = 
+  ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  // uint16_t valve1 = 
+  ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  // uint16_t valve2 = 
+  ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  // uint16_t valve3 = 
+  ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+ 
+ 
+ 
+  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab4, &slider1_min);
+  // ESPUI.addControl(ControlType::Slider, "BeregnungStoppen bei", "80", ControlColor::Peterriver, tab4, &slider1_max);
+  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab5, &slider2_min);
+  // ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab5, &slider2_max);
+  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab6, &slider3_min);
+  // ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab6, &slider3_max);
+  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab7, &slider4_min);
+  // ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab7, &slider4_max);
 
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE1:", "50", ControlColor::Alizarin, tab4, &max_raintime);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE2:", "50", ControlColor::Alizarin, tab5, &max_raintime); 
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE3:", "50", ControlColor::Alizarin, tab6, &max_raintime);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE4:", "50", ControlColor::Alizarin, tab7, &max_raintime);
   /*
     * .begin loads and serves all files from PROGMEM directly.
     * If you want to serve the files from SPIFFS use ESPUI.beginSPIFFS
@@ -290,8 +296,8 @@ void setup(void) {
     * password, for example begin("ESPUI Control", "username", "password")
     */
 
-  ESPUI.setVerbosity(Verbosity::Verbose);
-  ESPUI.beginSPIFFS("DFR25\n WaterControl");
+  ESPUI.setVerbosity(Verbosity::VerboseJSON);
+  ESPUI.begin("DFR25\n WaterControl");
 }
 
 void loop(void) {
