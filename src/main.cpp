@@ -25,12 +25,23 @@ uint16_t status;
 uint16_t LOG;
 uint16_t graphId;
 uint16_t gauge1;
-int airVal = 3478;
-int waterVal = 1326;
-const int sensorPin = 34;
+int pin = 0;
 int measuredVal = 0;
 int soilMoisturePercent = 0;
 int previousSoilMoisturePercent = 0;
+
+#if defined(ESP32)
+  const int sensorPin = 34;
+  int airVal = 3478;
+  int waterVal = 772;
+#else
+  const int sensorPin = A0;
+  int relayPin[] = {16,14,12,13};
+  int airVal = 300;
+  int waterVal = 1326;
+
+#endif
+
 
 
 
@@ -127,18 +138,24 @@ void slider(Control * sender, int type) {
 void ValveFunction(Control * sender, int type) {
   switch (type) {
     case B_DOWN:
-      logfunction(String(sender->label)+": OPEN");
+      logfunction(String(sender->id)+String(sender->label)+": OPEN");
       ESPUI.getControl(sender->id)->color =  ControlColor::Carrot;
       ESPUI.getControl(sender->id)->value = "OPEN";
       ESPUI.updateControl(sender->id);
-      break;
+      pin = relayPin[(sender->id)-13];
+      logfunction("Switch Pin "+String(pin));
+      digitalWrite(pin, HIGH);
+     break;
 
     case B_UP:
-       logfunction(String(sender->label)+": CLOSE");
+      logfunction(String(sender->id)+String(sender->label)+": CLOSE");
       ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
       ESPUI.getControl(sender->id)->value = "CLOSE";
       ESPUI.updateControl(sender->id);
-      break;
+      pin = relayPin[(sender->id)-13];
+      logfunction("Switch Pin "+String(pin));
+      digitalWrite(pin, LOW);
+    break;
   }
 }
 
@@ -171,6 +188,11 @@ void setup(void) {
   #else
     WiFi.hostname(hostname);
   #endif
+  
+
+  for (int i=0; i< sizeof(relayPin); i++) {
+  pinMode(relayPin[i], OUTPUT);
+  }
 
   // try to connect to existing network
   WiFi.begin(ssid, password);
@@ -239,10 +261,10 @@ void setup(void) {
   ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
 
 
-  ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  uint16_t valve0 = ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  uint16_t valve1 = ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  uint16_t valve2 = ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  uint16_t valve3 = ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
   // ESPUI.addControl( ControlType::PadWithCenter, "Pad with center", "", ControlColor::Sunflower, tab2, &padExample );
   // ESPUI.addControl( ControlType::Pad, "Pad without center", "", ControlColor::Carrot, tab3, &padExample );
   // switchOne = ESPUI.addControl( ControlType::Switcher, "Switch one", "", ControlColor::Alizarin, tab3, &switchExample );
@@ -277,7 +299,7 @@ void loop(void) {
 
   static long oldTime = 0;
 
-  if (millis() - oldTime > 5000) {
+  if (millis() - oldTime > 30000) {
     measureSoil();
     oldTime = millis();
   }
