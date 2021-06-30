@@ -13,9 +13,9 @@ DNSServer dnsServer;
 
 #endif
 
-const char * ssid = "SWN.NET-1O5ZS3T2";
+const char * ssid = "Exellent";
 const char * APId = "ESP-WaterControl";
-const char * password = "32133425607603846915";
+const char * password = "Exellenz";
 const char * hostname = "ESP-WaterControl";
 uint16_t valve0;
 uint16_t valve1;
@@ -26,9 +26,10 @@ uint16_t LOG;
 uint16_t graphId;
 uint16_t gauge1;
 int pin = 0;
+long timers[] = {0,0,0,0,0,0,0,0,0,0,0};
 int beregnungs_stop[] = {80,80,80,80,80};
 int beregnung_ab[] = {30, 30,30,30,30};
-int max_beregnung[] = {10*60*1000, 10*60*1000, 10*60*1000, 10*60*1000};
+int max_beregnung[] = {10*60*1000, 11*60*1000, 12*60*1000, 13*60*1000};
 int measuredVal = 0;
 int soilMoisturePercent = 0;
 int previousSoilMoisturePercent = 0;
@@ -72,6 +73,7 @@ void measureSoil() {
     }
 
   }
+  timers[0] =0;
 }
 
 void rawVals(Control * sender, int value) {
@@ -153,6 +155,7 @@ void ValveFunction(Control * sender, int type) {
         ESPUI.getControl(sender->id)->value = "CLOSE";
         ESPUI.updateControl(sender->id);
         digitalWrite(pin, LOW);
+        timers[(sender->id)-14] =0;
 
       }
       else{
@@ -164,7 +167,17 @@ void ValveFunction(Control * sender, int type) {
       }
       // logfunction("Switch Pin "+String(pin));
      break;
+    
+      }
  }
+void ValveClose(int valvenr){
+      pin = relayPin[valvenr];
+      ESPUI.getControl(valvenr+13)->color =  ControlColor::Wetasphalt;
+      ESPUI.getControl(valvenr+13)->value = "CLOSE";
+      ESPUI.updateControl(valvenr+13);
+      digitalWrite(pin, LOW);
+      timers[valvenr] =0;
+     
 }
 
 
@@ -174,9 +187,9 @@ void setup(void) {
   Serial.begin(115200);
   // SETUP Pin Modes 
   pinMode(sensorPin, INPUT);
-  // for (int i=0; i< sizeof(relayPin); i++) {
-  // pinMode(relayPin[i], OUTPUT);
-  // }
+  for (int i=0; i< sizeof(relayPin); i++) {
+  pinMode(relayPin[i], OUTPUT);
+  }
 
   #if defined(ESP32)
   WiFi.setHostname(hostname);
@@ -255,30 +268,26 @@ void setup(void) {
   ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
 
 
-  // uint16_t valve0 = 
-  ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  // uint16_t valve1 = 
-  ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  // uint16_t valve2 = 
-  ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  // uint16_t valve3 = 
-  ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valve0 =   ESPUI.addControl(ControlType::Button, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valve1 =   ESPUI.addControl(ControlType::Button, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valve2 =   ESPUI.addControl(ControlType::Button, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valve3 =   ESPUI.addControl(ControlType::Button, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
  
  
  
-  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab4, &slider1_min);
-  // ESPUI.addControl(ControlType::Slider, "BeregnungStoppen bei", "80", ControlColor::Peterriver, tab4, &slider1_max);
-  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab5, &slider2_min);
-  // ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab5, &slider2_max);
-  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab6, &slider3_min);
-  // ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab6, &slider3_max);
-  // ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab7, &slider4_min);
-  // ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab7, &slider4_max);
+  ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab4, &slider1_min);
+  ESPUI.addControl(ControlType::Slider, "BeregnungStoppen bei", "80", ControlColor::Peterriver, tab4, &slider1_max);
+  ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab5, &slider2_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab5, &slider2_max);
+  ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab6, &slider3_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab6, &slider3_max);
+  ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab7, &slider4_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab7, &slider4_max);
 
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE1:", "50", ControlColor::Alizarin, tab4, &max_raintime);
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE2:", "50", ControlColor::Alizarin, tab5, &max_raintime); 
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE3:", "50", ControlColor::Alizarin, tab6, &max_raintime);
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE4:", "50", ControlColor::Alizarin, tab7, &max_raintime);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE1:", "10", ControlColor::Alizarin, tab4, &max_raintime);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE2:", "11", ControlColor::Alizarin, tab5, &max_raintime); 
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE3:", "12", ControlColor::Alizarin, tab6, &max_raintime);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE4:", "13", ControlColor::Alizarin, tab7, &max_raintime);
   /*
     * .begin loads and serves all files from PROGMEM directly.
     * If you want to serve the files from SPIFFS use ESPUI.beginSPIFFS
@@ -296,17 +305,46 @@ void setup(void) {
     * password, for example begin("ESPUI Control", "username", "password")
     */
 
-  ESPUI.setVerbosity(Verbosity::VerboseJSON);
-  ESPUI.begin("DFR25\n WaterControl");
+  ESPUI.setVerbosity(Verbosity::Verbose);
+  ESPUI.beginSPIFFS("DFR25\n WaterControl");
 }
+void  timer_function(void){
+  if (millis() - timers[0] > 30000) {
+    measureSoil();
+    timers[0] = millis();
+  }
+  // Zone 1 Beregnung Timer
+  if (millis() - timers[1] > max_beregnung[0]) {
+    ValveClose(1);
+    timers[1] = millis();
+  }
+  // Zone 2 Beregnung Timer
+  if (millis() - timers[2] > max_beregnung[1]) {
+    ValveClose(2);
+    timers[2] = millis();
+  }
+  // Zone 3 Beregnung Timer
+  if (millis() - timers[3] > max_beregnung[2]) {
+    ValveClose(3);
+    timers[3] = millis();
+  }
+  // Zone 4 Beregnung Timer
+  if (millis() - timers[4] > max_beregnung[3]) {
+    ValveClose(4);
+    timers[4] = millis();
+  }
+  
+}
+// TODO Start on MOISTURE AND STOP ON MOISTURE
+
+// TODO STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
+  void saveValues(){
+  
+  }
+  void loadValues(){
+  }
 
 void loop(void) {
   dnsServer.processNextRequest();
-
-  static long oldTime = 0;
-
-  if (millis() - oldTime > 30000) {
-    measureSoil();
-    oldTime = millis();
-  }
+  timer_function();
 }
