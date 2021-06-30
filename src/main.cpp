@@ -155,7 +155,7 @@ void ValveFunction(Control * sender, int type) {
         ESPUI.getControl(sender->id)->value = "CLOSE";
         ESPUI.updateControl(sender->id);
         digitalWrite(pin, LOW);
-        timers[(sender->id)-14] =0;
+        timers[(sender->id)-12] =0;
 
       }
       else{
