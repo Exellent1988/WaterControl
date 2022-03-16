@@ -11,7 +11,7 @@
 #endif
 
 #include <ESPUI.h>
-#include <AsyncElegantOTA.h>
+
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 1, 1);
@@ -327,7 +327,7 @@ void setup(void) {
   ESPUI.jsonInitialDocumentSize = 10000;
   ESPUI.setVerbosity(Verbosity::Verbose);
   ESPUI.beginSPIFFS("DFR25\n WaterControl");
-  
+ 
 }
 
 void debug(){
