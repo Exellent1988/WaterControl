@@ -1,14 +1,18 @@
 #include <DNSServer.h>
 
 #include <ESPUI.h>
+#include <AsyncElegantOTA.h>
+#include <ESPAsyncTCP.h>
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
 
+
 #if defined(ESP32)
   #include <WiFi.h>
 #else
+  #include <ADS1118.h>
   #include <ESP8266WiFi.h>
 
 #endif
@@ -320,6 +324,7 @@ void setup(void) {
   ESPUI.jsonInitialDocumentSize = 10000;
   ESPUI.setVerbosity(Verbosity::Verbose);
   ESPUI.beginSPIFFS("DFR25\n WaterControl");
+  AsyncElegantOTA.begin(server);
 }
 
 void debug(){
