@@ -1,0 +1,3 @@
+[submodule "lib/ADS1118"]
+	path = lib/ADS1118
+	url = git@github.com:defixio/ADS1118.git
