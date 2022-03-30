@@ -1,31 +1,35 @@
-#include <DNSServer.h>
 
-#include <ArduinoOTA.h>
-  #include <ADS1118.h>
+#if defined(ESP32)
+  #include <WiFi.h>
+  #include <AsyncTCP.h>
+#else
   #include <ESP8266WiFi.h>
   #include <ESPAsyncTCP.h>
+  #include <ADS1118.h>
+    // ESP 12-F SPI Definition
+  #define PIN_SPI_SS   (9)
+  #define PIN_SPI_MOSI (13)
+  #define PIN_SPI_MISO (10)
+  #define PIN_SPI_SCK  (14)
+
+  // static const uint8_t SS    = PIN_SPI_SS;
+  // static const uint8_t MOSI  = PIN_SPI_MOSI;
+  // static const uint8_t MISO  = PIN_SPI_MISO;
+  // static const uint8_t SCK   = PIN_SPI_SCK;
+    ADS1118 ads1118(PIN_SPI_SS);
+#endif
+#include <DNSServer.h>
+#include <ArduinoOTA.h>
 #include <ESPUI.h>
-#include <iostream>
-#include <sstream>
-#include <SPI.h>
 
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
-// ESP 12-F SPI Definition
-#define PIN_SPI_SS   (9)
-#define PIN_SPI_MOSI (13)
-#define PIN_SPI_MISO (10)
-#define PIN_SPI_SCK  (14)
 
-// static const uint8_t SS    = PIN_SPI_SS;
-// static const uint8_t MOSI  = PIN_SPI_MOSI;
-// static const uint8_t MISO  = PIN_SPI_MISO;
-// static const uint8_t SCK   = PIN_SPI_SCK;
 
 //Creating an ADS1118 object (object's name is ads1118)
-ADS1118 ads1118(PIN_SPI_SS);
+
 
 const char * ssid = "Exellent";
 const char * APId = "ESP-WaterControl";
@@ -49,12 +53,19 @@ int soilMoisturePercent = 0;
 int previousSoilMoisturePercent = 0;
 int selectedZone = 0;
 
-
+#if defined(ESP32)
+  int sensors[] = {36,39,34,35};
+  int relayPin[] = {8,0,15,2};
+  int airVal = 3478;
+  int waterVal = 772;
+#else
   int sensors[] = {ads1118.AIN_0,ads1118.AIN_1,ads1118.AIN_2,ads1118.AIN_3};
   int relayPin[] = {D0,D5,D6,D7};
   int airVal = 300;
   int waterVal = 1326;
 
+#endif
+  
 
 
 
@@ -69,7 +80,7 @@ void logfunction(String text) {
 }
 
 void measureSoil(int zone) {
-  measuredVal = ads1118.getMilliVolts(sensors[zone]);
+  measuredVal = analogRead(sensors[zone]);
   soilMoisturePercent = map(measuredVal, airVal, waterVal, 0, 100);
   if (soilMoisturePercent > 100) {
     logfunction("Error: Moisture too high: "+ String(measuredVal)+"! Please calibrate." );
@@ -91,7 +102,7 @@ void measureSoil(int zone) {
 
 void rawVals(Control * sender, int value) {
 
-  measuredVal = ads1118.getMilliVolts(sensors[selectedZone]);
+  measuredVal = analogRead(sensors[selectedZone]);
 
   logfunction("Current value: "+ String(measuredVal));
   Serial.print("Current Air value: ");
@@ -103,10 +114,10 @@ void rawVals(Control * sender, int value) {
 }
 void debug_analog(){
 for (int i = 0; i < 4; i++) {
-  measuredVal = ads1118.getMilliVolts(sensors[i]);
+  measuredVal = analogRead(sensors[i]);
 
   logfunction("analog redout channel: "+ String(i) +"  val:" + String(measuredVal));
-  logfunction(String(ads1118.getTemperature(),6)+" C");
+  // logfunction(String(ads1118.getTemperature(),6)+" C");
   }
   delay(1000);
 }
@@ -115,7 +126,7 @@ for (int i = 0; i < 4; i++) {
 void measureAir(Control * sender, int type) {
   switch (type) {
     case B_DOWN:
-      measuredVal = ads1118.getMilliVolts(sensors[selectedZone]);
+      measuredVal = analogRead(sensors[selectedZone]);
       airVal = measuredVal;
       logfunction("NEW AIR value: " + String(airVal));
       
@@ -126,7 +137,7 @@ void measureAir(Control * sender, int type) {
 void measureWater(Control * sender, int type) {
   switch (type) {
     case B_DOWN:
-      measuredVal = ads1118.getMilliVolts(sensors[selectedZone]);
+      measuredVal = analogRead(sensors[selectedZone]);
       waterVal = measuredVal;
       logfunction("NEW WATER value: " + String(waterVal));
       break;
@@ -289,12 +300,12 @@ void setup(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.getMode() == WIFI_AP ? WiFi.softAPIP() : WiFi.localIP());
   // Start ADC config 
-  ads1118.begin();
+  // ads1118.begin();
 /* Changing the sampling rate. RATE_8SPS, RATE_16SPS, RATE_32SPS, RATE_64SPS, RATE_128SPS, RATE_250SPS, RATE_475SPS, RATE_860SPS*/
-    ads1118.setSamplingRate(ads1118.RATE_8SPS);
+    // ads1118.setSamplingRate(ads1118.RATE_8SPS);
 
     /* Changing the input selected. Differential inputs: DIFF_0_1, DIFF_0_3, DIFF_1_3, DIFF_2_3. Single ended input: AIN_0, AIN_1, AIN_2, AIN_3*/
-    ads1118.setInputSelected(ads1118.AIN_0);
+    // ads1118.setInputSelected(ads1118.AIN_0);
 
   uint16_t tab0 = ESPUI.addControl(ControlType::Tab, "Control", "Control", None, None, &tabcallback);
   uint16_t tab1 = ESPUI.addControl(ControlType::Tab, "LiveData", "Data", None, None, &tabcallback);
@@ -316,9 +327,9 @@ void setup(void) {
   valve3 =   ESPUI.addControl(ControlType::Switcher, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
 
   // tab 1
-  // graphId = ESPUI.addControl(ControlType::Graph, "Sensor1", "Humidity", ControlColor::Wetasphalt, tab1);
-  // gauge1 = ESPUI.addControl(ControlType::Gauge, "Sensor1", "Humidity:", ControlColor::Carrot, tab1);
-  // ESPUI.addControl(ControlType::Button, "Clear Graph", "Clear", ControlColor::Peterriver, tab1, &clearGraph);
+  graphId = ESPUI.addControl(ControlType::Graph, "Sensor1", "Humidity", ControlColor::Wetasphalt, tab1);
+  gauge1 = ESPUI.addControl(ControlType::Gauge, "Sensor1", "Humidity:", ControlColor::Carrot, tab1);
+  ESPUI.addControl(ControlType::Button, "Clear Graph", "Clear", ControlColor::Peterriver, tab1, &clearGraph);
 
   
   // tab 2
