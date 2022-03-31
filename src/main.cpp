@@ -21,7 +21,7 @@
 #include <DNSServer.h>
 #include <ArduinoOTA.h>
 #include <ESPUI.h>
-
+#include <map>
 
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 1, 1);
@@ -52,7 +52,8 @@ int measuredVal = 0;
 int soilMoisturePercent = 0;
 int previousSoilMoisturePercent = 0;
 int selectedZone = 0;
-
+std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
+std::map<int,uint16_t> valvesUI;
 #if defined(ESP32)
   int sensors[] = {36,39,34,35};
   int relayPin[] = {8,0,15,2};
@@ -71,7 +72,7 @@ int selectedZone = 0;
 
 int label_to_int(const char * value)
 {
- return 1;
+ return zone_assoc[value];
 }
 
 void logfunction(String text) {
@@ -185,46 +186,60 @@ void slider4_min(Control * sender, int type) {
 }
 void max_raintime_function(Control * sender, int type) {
   max_raintime[(sender->id-27)] = sender->value.toInt()*60*1000;
-  logfunction("raintime Zone " +String(sender->id-27) +" gesetzt: "+ max_raintime[(sender->id-27)] );
+  logfunction("raintime Zone " +String(sender->id-32) +" gesetzt: "+ max_raintime[(sender->id-27)] );
 }
 
 
 void ValveFunction(Control * sender, int type) {
-  int valvenrI = label_to_int(sender->label);
-  switch (type) {
-    case B_DOWN:
-      
-      pin = relayPin[(sender->id)-16];
-      if (digitalRead(pin) == HIGH){
-        ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
-        ESPUI.updateControlValue(sender->id ,"CLOSE");
-        ESPUI.updateControl(sender->id);
+  int valveNr = label_to_int(sender->label);
+   pin = relayPin[valveNr];
+   switch (type)
+    {
+    case S_ACTIVE:
+        logfunction("Valve " + String(valveNr+1) + " is ON");
+        timers[valveNr] =0;
+        digitalWrite(pin, HIGH);
+        timers[valveNr+1] = 0;
+        
+        break;
+
+    case S_INACTIVE:
+        logfunction("Valve " + String(valveNr+1) + " is OFF");
         digitalWrite(pin, LOW);
+        timers[valveNr+1] = millis();
+    }
+  // switch (type) {
+  //   case B_DOWN:
+      
+  //     pin = relayPin[(sender->id)-16];
+  //     if (digitalRead(pin) == HIGH){
+  //       ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
+  //       ESPUI.updateControlValue(sender->id ,"CLOSE");
+  //       ESPUI.updateControl(sender->id);
+  //       digitalWrite(pin, LOW);
         
 
-      }
-      else{
-      logfunction(String(sender->id)+String(sender->label)+": OPEN");
-      ESPUI.getControl(sender->id)->color =  ControlColor::Carrot;
-      ESPUI.updateControlValue(sender->id ,"OPEN");
-      ESPUI.updateControl(sender->id);
-      digitalWrite(pin, HIGH);
-      timers[(sender->id)-15] =0;
-      logfunction("Timer set to 0: "+String((sender->id)-15));
-      }
-      // logfunction("Switch Pin "+String(pin));
-     break;
+  //     }
+  //     else{
+  //     logfunction(String(sender->id)+String(sender->label)+": OPEN");
+  //     ESPUI.getControl(sender->id)->color =  ControlColor::Carrot;
+  //     ESPUI.updateControlValue(sender->id ,"OPEN");
+  //     ESPUI.updateControl(sender->id);
+  //     digitalWrite(pin, HIGH);
+  //     timers[(sender->id)-15] =0;
+  //     logfunction("Timer set to 0: "+String((sender->id)-15));
+  //     }
+  //     // logfunction("Switch Pin "+String(pin));
+  //    break;
     
-      }
+  //     }
  }
 
 
 void ValveClose(int valvenr){
     	logfunction("Valve should close: "+String(valvenr));
       pin = relayPin[valvenr];
-      ESPUI.getControl(valvenr+15)->color =  ControlColor::Wetasphalt;
-      ESPUI.getControl(valvenr+15)->value = "CLOSE";
-      ESPUI.updateControl(valvenr+15);
+      ESPUI.updateControlValue(valvesUI[valvenr],"0");
       digitalWrite(pin, LOW);
       timers[valvenr] =0;
      
@@ -233,7 +248,7 @@ void selectZone(Control* sender, int value)
 {
    logfunction("Select: ID: "+ (sender->id));
     logfunction("Value: " + (sender->value));
-    selectedZone = (sender->value).toInt();
+    selectedZone = label_to_int(sender->value.c_str())-1;
 }
 void tabcallback(Control* sender, int value)
 {
@@ -241,6 +256,53 @@ void tabcallback(Control* sender, int value)
    
 }
 
+
+
+
+void debug(){
+    for (int a=0; a<= 4; a++) {
+    logfunction("Timer"+String(a)+": "+ String(timers[a]));
+    }
+    for (int b=0; b<= 3; b++) {
+    logfunction("Pin"+String(b)+": "+ String(digitalRead(relayPin[b])));
+    }
+}
+
+void timer_checkFunction(int zone){
+  if (millis() - timers[zone] > max_raintime[zone] && digitalRead(relayPin[zone]) == HIGH) {
+  ValveClose(zone);
+  timers[zone] = millis();
+  }
+
+}
+
+void  timer_function(void){
+  
+  if (millis() - timers[0] > 3000) {
+  for (size_t i = 0; i <= 3; i++)
+  {
+      measureSoil(i);
+      debug();
+  }
+  }
+  for (size_t x = 1; x <= 4; x++)
+  {
+    timer_checkFunction(x);
+  }
+  timers[0] = millis();
+  
+}
+
+
+     
+// TODO Start on MOISTURE AND STOP ON MOISTURE
+
+// TODO STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
+  void saveValues(){
+  
+  }
+  void loadValues(){
+  }
 
 
 
@@ -321,10 +383,14 @@ void setup(void) {
   LOG = ESPUI.addControl(ControlType::Label, "LOG:", "-", ControlColor::Turquoise);
 
   // tab 0
-  valve0 =   ESPUI.addControl(ControlType::Switcher, "Valve0", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valve1 =   ESPUI.addControl(ControlType::Switcher, "Valve1", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valve2 =   ESPUI.addControl(ControlType::Switcher, "Valve2", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valve3 =   ESPUI.addControl(ControlType::Switcher, "Valve3", "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  // static String Valves[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4"};
+  // for(auto const& v : Valves) {
+  //   ESPUI.addControl(ControlType::Switcher, v.c_str(), "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  // }
+  valvesUI[0] =   ESPUI.addControl(ControlType::Switcher, "Zone 1", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[1] =   ESPUI.addControl(ControlType::Switcher, "Zone 2", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[2] =   ESPUI.addControl(ControlType::Switcher, "Zone 3", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[3] =   ESPUI.addControl(ControlType::Switcher, "Zone 4", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
 
   // tab 1
   graphId = ESPUI.addControl(ControlType::Graph, "Sensor1", "Humidity", ControlColor::Wetasphalt, tab1);
@@ -333,7 +399,7 @@ void setup(void) {
 
   
   // tab 2
-  static String optionValues[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"};
+  static String optionValues[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4"};
   auto zoneSelect = ESPUI.addControl(Select, "Zone Selector", "Z-Selector", Wetasphalt, tab2, selectZone);
 	for(auto const& v : optionValues) {
   	ESPUI.addControl(Option, v.c_str(),v, None, zoneSelect);
@@ -347,17 +413,17 @@ void setup(void) {
  
  
  
-  uint16_t zone1_min = ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab4, &slider1_min);
-  uint16_t zone1_max = ESPUI.addControl(ControlType::Slider, "BeregnungStoppen bei", "80", ControlColor::Peterriver, tab4, &slider1_max);
+  uint16_t zone1_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab4, &slider1_min);
+  uint16_t zone1_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab4, &slider1_max);
 
-  uint16_t zone2_min = ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab5, &slider2_min);
-  uint16_t zone2_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab5, &slider2_max);
+  uint16_t zone2_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab5, &slider2_min);
+  uint16_t zone2_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab5, &slider2_max);
   
-  uint16_t zone3_min = ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab6, &slider3_min);
-  uint16_t zone3_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab6, &slider3_max);
+  uint16_t zone3_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab6, &slider3_min);
+  uint16_t zone3_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab6, &slider3_max);
   
-  uint16_t zone4_min = ESPUI.addControl(ControlType::Slider, "Schwellenwert", "30", ControlColor::Alizarin, tab7, &slider4_min);
-  uint16_t zone4_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei", "80", ControlColor::Peterriver, tab7, &slider4_max);
+  uint16_t zone4_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab7, &slider4_min);
+  uint16_t zone4_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab7, &slider4_max);
 
 
   ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE1:", "1", ControlColor::Alizarin, tab4, &max_raintime_function);
@@ -382,63 +448,14 @@ void setup(void) {
     */
   ESPUI.jsonInitialDocumentSize = 10000;
   ESPUI.setVerbosity(Verbosity::Verbose);
-  ESPUI.beginSPIFFS("DFR25\n WaterControl");
+  ESPUI.begin("DFR25\n WaterControl");
   ArduinoOTA.begin();
  
 }
-
-void debug(){
-    for (int a=0; a< 5; a++) {
-    Serial.println("Timer"+String(a)+": "+ timers[a]);
-    }
-    for (int b=0; b< 4; b++) {
-    Serial.println("Pin"+String(b)+": "+ digitalRead(relayPin[b]));
-    }
-}
-
-
-void  timer_function(void){
-   
-     
-  if (millis() - timers[0] > 30000) {
-    measureSoil(0);
-    debug();
-    timers[0] = millis();
-  }
-  // Zone 1 Beregnung Timer
-  if (millis() - timers[1] > max_raintime[0] && digitalRead(relayPin[0]) == HIGH) {
-    ValveClose(1);
-    timers[1] = millis();
-  }
-  // Zone 2 Beregnung Timer
-  if (millis() - timers[2] > max_raintime[1] && digitalRead(relayPin[1]) == HIGH) {
-    ValveClose(2);
-    timers[2] = millis();
-  }
-  // Zone 3 Beregnung Timer
-  if (millis() - timers[3] > max_raintime[2] && digitalRead(relayPin[2]) == HIGH) {
-    ValveClose(3);
-    timers[3] = millis();
-  }
-  // Zone 4 Beregnung Timer
-  if (millis() - timers[4] > max_raintime[3] && digitalRead(relayPin[3]) == HIGH) {
-    ValveClose(4);
-    timers[4] = millis();
-  }
-  
-}
-// TODO Start on MOISTURE AND STOP ON MOISTURE
-
-// TODO STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
-  void saveValues(){
-  
-  }
-  void loadValues(){
-  }
 
 void loop(void) {
   ArduinoOTA.handle();
   dnsServer.processNextRequest();
   timer_function();
-  debug_analog();
+  // debug_analog();
 }
