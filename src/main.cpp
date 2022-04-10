@@ -21,6 +21,8 @@
 #include <DNSServer.h>
 #include <ArduinoOTA.h>
 #include <ESPUI.h>
+#include <Wire.h>
+#include <RtcDS1307.h>
 #include <map>
 
 const byte DNS_PORT = 53;
@@ -35,6 +37,7 @@ const char * ssid = "Exellent_outdoor";
 const char * APId = "ESP-WaterControl";
 const char * password = "Exellenz";
 const char * hostname = "ESP-WaterControl";
+RtcDS1307<TwoWire> Rtc(Wire);
 uint16_t valve0;
 uint16_t valve1;
 uint16_t valve2;
@@ -44,6 +47,8 @@ uint16_t LOG;
 uint16_t graphId;
 uint16_t gauge1;
 int pin = 0;
+
+RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
 long timers[] = {0,0,0,0,0};
 int rain_stop[] = {80,80,80,80,80};
 int rain_start[] = {30, 30,30,30,30};
@@ -54,6 +59,7 @@ int previousSoilMoisturePercent = 50;
 int selectedZone = 0;
 std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
 std::map<int,uint16_t> valvesUI;
+
 #if defined(ESP32)
   int sensors[] = {35,34,39,36};
   int relayPin[] = {0,15,2,4};
@@ -210,7 +216,23 @@ void ValveFunction(Control * sender, int type) {
     }
  }
 
-
+void ValveToggle(int valvenr){
+    	pin = relayPin[valvenr];
+      if (digitalRead(pin) == HIGH) {
+       timers[valvenr+1] =0;
+      logfunction("Valve should close: "+String(valvenr));
+      
+      ESPUI.updateSwitcher(valvesUI[valvenr],false);
+      digitalWrite(pin, LOW);
+      } else {
+        logfunction("Valve should open: "+String(valvenr));
+      
+        ESPUI.updateSwitcher(valvesUI[valvenr],false);
+        timers[valvenr+1] = millis();
+      }
+    
+      
+}
 void ValveClose(int valvenr){
     	timers[valvenr+1] =0;
       logfunction("Valve should close: "+String(valvenr));
@@ -274,7 +296,7 @@ void  timer_function(void){
 void IRAM_ATTR button_press(){
   for (int i=0; i< 4; i++) {
     if (digitalRead(buttonPin[i]) == LOW) {
-      ValveClose(i);
+      ValveToggle(i);
     }
   }
   
@@ -292,11 +314,75 @@ void IRAM_ATTR button_press(){
   void loadValues(){
   }
 
+void setup_theUI(){
+  uint16_t tab0 = ESPUI.addControl(ControlType::Tab, "Control", "Control", None, None, &tabcallback);
+  uint16_t tab1 = ESPUI.addControl(ControlType::Tab, "LiveData", "Data", None, None, &tabcallback);
+  uint16_t tab2 = ESPUI.addControl(ControlType::Tab, "Calibration", "Calibration", None, None, &tabcallback);
+  // uint16_t tab3 = ESPUI.addControl(ControlType::Tab, "Configuration", "Setttings");
+  uint16_t tab4 = ESPUI.addControl(ControlType::Tab, "Configuration Z1", "ZONE 1", None, None, &tabcallback);
+  uint16_t tab5 = ESPUI.addControl(ControlType::Tab, "Configuration Z2", "ZONE 2", None, None, &tabcallback);
+  uint16_t tab6 = ESPUI.addControl(ControlType::Tab, "Configuration Z3", "ZONE 3", None, None, &tabcallback);
+  uint16_t tab7 = ESPUI.addControl(ControlType::Tab, "Configuration Z4", "ZONE 4", None, None, &tabcallback);
+  // auto select_cal = ESPUI.addControl( ControlType::Select, "Zone to Calibrate", "Zone1", ControlColor::Alizarin, tab2, &selectZone);
+  // shown above all tabs
+  status = ESPUI.addControl(ControlType::Label, "Status:", "All fine", ControlColor::Turquoise);
+  LOG = ESPUI.addControl(ControlType::Label, "LOG:", "-", ControlColor::Turquoise);
+
+  // tab 0
+  // static String Valves[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4"};
+  // for(auto const& v : Valves) {
+  //   ESPUI.addControl(ControlType::Switcher, v.c_str(), "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  // }
+  valvesUI[0] =   ESPUI.addControl(ControlType::Switcher, "Zone 1", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[1] =   ESPUI.addControl(ControlType::Switcher, "Zone 2", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[2] =   ESPUI.addControl(ControlType::Switcher, "Zone 3", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[3] =   ESPUI.addControl(ControlType::Switcher, "Zone 4", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+
+  // tab 1
+  graphId = ESPUI.addControl(ControlType::Graph, "Sensor1", "Humidity", ControlColor::Wetasphalt, tab1);
+  gauge1 = ESPUI.addControl(ControlType::Gauge, "Sensor1", "Humidity:", ControlColor::Carrot, tab1);
+  ESPUI.addControl(ControlType::Button, "Clear Graph", "Clear", ControlColor::Peterriver, tab1, &clearGraph);
+
+  
+  // tab 2
+  static String optionValues[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4"};
+  auto zoneSelect = ESPUI.addControl(Select, "Zone Selector", "Z-Selector", Wetasphalt, tab2, selectZone);
+	for(auto const& v : optionValues) {
+  	ESPUI.addControl(Option, v.c_str(),v, None, zoneSelect);
+  }
+
+  ESPUI.addControl(ControlType::Button, "Calibrate ( in Air )", "Press", ControlColor::Peterriver, tab2, &measureAir);
+  ESPUI.addControl(ControlType::Button, "Calibrate ( in Water )", "Press", ControlColor::Alizarin, tab2, &measureWater);
+  ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
+
+
+ 
+ 
+ 
+  ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab4, &slider1_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab4, &slider1_max);
+
+  ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab5, &slider2_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab5, &slider2_max);
+  
+  ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab6, &slider3_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab6, &slider3_max);
+  
+  ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab7, &slider4_min);
+  ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab7, &slider4_max);
+
+
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE1:", "1", ControlColor::Alizarin, tab4, &max_raintime_function);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE2:", "2", ControlColor::Alizarin, tab5, &max_raintime_function); 
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE3:", "3", ControlColor::Alizarin, tab6, &max_raintime_function);
+  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE4:", "4", ControlColor::Alizarin, tab7, &max_raintime_function);
+}
 
 
 void setup(void) {
   
   Serial.begin(115200);
+  
   // SETUP Pin Modes 
   
   for (int i=0; i< 4; i++) {
@@ -305,7 +391,10 @@ void setup(void) {
   pinMode(buttonPin[i], INPUT_PULLUP);
   attachInterrupt(buttonPin[i],button_press, FALLING);
   }
-  
+  // SETUP RTC 
+  Wire.begin(21,22);
+  Rtc.Begin();
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__); 
 
   #if defined(ESP32)
   WiFi.setHostname(hostname);
@@ -361,67 +450,7 @@ void setup(void) {
     /* Changing the input selected. Differential inputs: DIFF_0_1, DIFF_0_3, DIFF_1_3, DIFF_2_3. Single ended input: AIN_0, AIN_1, AIN_2, AIN_3*/
     // ads1118.setInputSelected(ads1118.AIN_0);
 
-  uint16_t tab0 = ESPUI.addControl(ControlType::Tab, "Control", "Control", None, None, &tabcallback);
-  uint16_t tab1 = ESPUI.addControl(ControlType::Tab, "LiveData", "Data", None, None, &tabcallback);
-  uint16_t tab2 = ESPUI.addControl(ControlType::Tab, "Calibration", "Calibration", None, None, &tabcallback);
-  // uint16_t tab3 = ESPUI.addControl(ControlType::Tab, "Configuration", "Setttings");
-  uint16_t tab4 = ESPUI.addControl(ControlType::Tab, "Configuration Z1", "ZONE 1", None, None, &tabcallback);
-  uint16_t tab5 = ESPUI.addControl(ControlType::Tab, "Configuration Z2", "ZONE 2", None, None, &tabcallback);
-  uint16_t tab6 = ESPUI.addControl(ControlType::Tab, "Configuration Z3", "ZONE 3", None, None, &tabcallback);
-  uint16_t tab7 = ESPUI.addControl(ControlType::Tab, "Configuration Z4", "ZONE 4", None, None, &tabcallback);
-  // auto select_cal = ESPUI.addControl( ControlType::Select, "Zone to Calibrate", "Zone1", ControlColor::Alizarin, tab2, &selectZone);
-  // shown above all tabs
-  status = ESPUI.addControl(ControlType::Label, "Status:", "All fine", ControlColor::Turquoise);
-  LOG = ESPUI.addControl(ControlType::Label, "LOG:", "-", ControlColor::Turquoise);
-
-  // tab 0
-  // static String Valves[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4"};
-  // for(auto const& v : Valves) {
-  //   ESPUI.addControl(ControlType::Switcher, v.c_str(), "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  // }
-  valvesUI[0] =   ESPUI.addControl(ControlType::Switcher, "Zone 1", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valvesUI[1] =   ESPUI.addControl(ControlType::Switcher, "Zone 2", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valvesUI[2] =   ESPUI.addControl(ControlType::Switcher, "Zone 3", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valvesUI[3] =   ESPUI.addControl(ControlType::Switcher, "Zone 4", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-
-  // tab 1
-  graphId = ESPUI.addControl(ControlType::Graph, "Sensor1", "Humidity", ControlColor::Wetasphalt, tab1);
-  gauge1 = ESPUI.addControl(ControlType::Gauge, "Sensor1", "Humidity:", ControlColor::Carrot, tab1);
-  ESPUI.addControl(ControlType::Button, "Clear Graph", "Clear", ControlColor::Peterriver, tab1, &clearGraph);
-
-  
-  // tab 2
-  static String optionValues[] {"Zone 1", "Zone 2", "Zone 3", "Zone 4"};
-  auto zoneSelect = ESPUI.addControl(Select, "Zone Selector", "Z-Selector", Wetasphalt, tab2, selectZone);
-	for(auto const& v : optionValues) {
-  	ESPUI.addControl(Option, v.c_str(),v, None, zoneSelect);
-  }
-
-  ESPUI.addControl(ControlType::Button, "Calibrate ( in Air )", "Press", ControlColor::Peterriver, tab2, &measureAir);
-  ESPUI.addControl(ControlType::Button, "Calibrate ( in Water )", "Press", ControlColor::Alizarin, tab2, &measureWater);
-  ESPUI.addControl(ControlType::Button, "Print Raw Value", "Press", ControlColor::Emerald, tab2, &rawVals);
-
-
- 
- 
- 
-  uint16_t zone1_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab4, &slider1_min);
-  uint16_t zone1_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab4, &slider1_max);
-
-  uint16_t zone2_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab5, &slider2_min);
-  uint16_t zone2_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab5, &slider2_max);
-  
-  uint16_t zone3_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab6, &slider3_min);
-  uint16_t zone3_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab6, &slider3_max);
-  
-  uint16_t zone4_min = ESPUI.addControl(ControlType::Slider, "Beregnung starten bei %", "30", ControlColor::Alizarin, tab7, &slider4_min);
-  uint16_t zone4_max = ESPUI.addControl(ControlType::Slider, "Beregnung Stoppen bei %", "80", ControlColor::Peterriver, tab7, &slider4_max);
-
-
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE1:", "1", ControlColor::Alizarin, tab4, &max_raintime_function);
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE2:", "2", ControlColor::Alizarin, tab5, &max_raintime_function); 
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE3:", "3", ControlColor::Alizarin, tab6, &max_raintime_function);
-  ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE4:", "4", ControlColor::Alizarin, tab7, &max_raintime_function);
+  setup_theUI();
   /*
     * .begin loads and serves all files from PROGMEM directly.
     * If you want to serve the files from SPIFFS use ESPUI.beginSPIFFS
