@@ -31,7 +31,7 @@ DNSServer dnsServer;
 //Creating an ADS1118 object (object's name is ads1118)
 
 
-const char * ssid = "Exellent";
+const char * ssid = "Exellent_outdoor";
 const char * APId = "ESP-WaterControl";
 const char * password = "Exellenz";
 const char * hostname = "ESP-WaterControl";
@@ -49,14 +49,15 @@ int rain_stop[] = {80,80,80,80,80};
 int rain_start[] = {30, 30,30,30,30};
 long max_raintime[] = {1*60*1000, 2*60*1000, 3*60*1000, 4*60*1000};
 int measuredVal = 0;
-int soilMoisturePercent = 0;
-int previousSoilMoisturePercent = 0;
+int soilMoisturePercent = 50;
+int previousSoilMoisturePercent = 50;
 int selectedZone = 0;
 std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
 std::map<int,uint16_t> valvesUI;
 #if defined(ESP32)
-  int sensors[] = {36,39,34,35};
-  int relayPin[] = {8,0,15,2};
+  int sensors[] = {35,34,39,36};
+  int relayPin[] = {0,15,2,4};
+  int buttonPin[] = {11,10,9,13};
   int airVal = 3478;
   int waterVal = 772;
 #else
@@ -84,11 +85,11 @@ void measureSoil(int zone) {
   measuredVal = analogRead(sensors[zone]);
   soilMoisturePercent = map(measuredVal, airVal, waterVal, 0, 100);
   if (soilMoisturePercent > 100) {
-    logfunction("Error: Moisture too high: "+ String(measuredVal)+"! Please calibrate." );
+    logfunction("Error Zone"+ String(zone)+":  Moisture too high: "+ String(measuredVal)+"! Please calibrate." );
   } else if (soilMoisturePercent < 0) {
-    logfunction("Error: Moisture too low: "+ String(measuredVal)+"! Please calibrate.");
+    logfunction("Error Zone "+ String(zone)+": Moisture too low: "+ String(measuredVal)+"! Please calibrate.");
   } else if (soilMoisturePercent <= 100 &&soilMoisturePercent >= 0) {
-    Serial.print("Feuchtigkeit: ");
+    Serial.print("Feuchtigkeit Zone "+ String(zone)+": ");
     Serial.print(soilMoisturePercent);
     Serial.println(" %");
     ESPUI.addGraphPoint(graphId, soilMoisturePercent);
@@ -98,7 +99,7 @@ void measureSoil(int zone) {
     }
 
   }
-  timers[0] =0;
+  // timers[0] =0;
 }
 
 void rawVals(Control * sender, int value) {
@@ -197,52 +198,26 @@ void ValveFunction(Control * sender, int type) {
     {
     case S_ACTIVE:
         logfunction("Valve " + String(valveNr+1) + " is ON");
-        timers[valveNr] =0;
         digitalWrite(pin, HIGH);
-        timers[valveNr+1] = 0;
+        timers[valveNr+1] = millis();
         
         break;
 
     case S_INACTIVE:
         logfunction("Valve " + String(valveNr+1) + " is OFF");
         digitalWrite(pin, LOW);
-        timers[valveNr+1] = millis();
+        timers[valveNr+1] = 0;
     }
-  // switch (type) {
-  //   case B_DOWN:
-      
-  //     pin = relayPin[(sender->id)-16];
-  //     if (digitalRead(pin) == HIGH){
-  //       ESPUI.getControl(sender->id)->color =  ControlColor::Wetasphalt;
-  //       ESPUI.updateControlValue(sender->id ,"CLOSE");
-  //       ESPUI.updateControl(sender->id);
-  //       digitalWrite(pin, LOW);
-        
-
-  //     }
-  //     else{
-  //     logfunction(String(sender->id)+String(sender->label)+": OPEN");
-  //     ESPUI.getControl(sender->id)->color =  ControlColor::Carrot;
-  //     ESPUI.updateControlValue(sender->id ,"OPEN");
-  //     ESPUI.updateControl(sender->id);
-  //     digitalWrite(pin, HIGH);
-  //     timers[(sender->id)-15] =0;
-  //     logfunction("Timer set to 0: "+String((sender->id)-15));
-  //     }
-  //     // logfunction("Switch Pin "+String(pin));
-  //    break;
-    
-  //     }
  }
 
 
 void ValveClose(int valvenr){
-    	logfunction("Valve should close: "+String(valvenr));
+    	timers[valvenr+1] =0;
+      logfunction("Valve should close: "+String(valvenr));
       pin = relayPin[valvenr];
-      ESPUI.updateControlValue(valvesUI[valvenr],"0");
+      ESPUI.updateSwitcher(valvesUI[valvenr],false);
       digitalWrite(pin, LOW);
-      timers[valvenr] =0;
-     
+      
 }
 void selectZone(Control* sender, int value)
 {
@@ -269,28 +244,41 @@ void debug(){
 }
 
 void timer_checkFunction(int zone){
-  if (millis() - timers[zone] > max_raintime[zone] && digitalRead(relayPin[zone]) == HIGH) {
+  if ((millis() - timers[zone+1] > max_raintime[zone]) && (digitalRead(relayPin[zone]) == HIGH)) {
   ValveClose(zone);
-  timers[zone] = millis();
+  timers[zone+1] = 0;
   }
 
 }
 
 void  timer_function(void){
   
-  if (millis() - timers[0] > 3000) {
+  if (millis() - timers[0] > 15000) {
   for (size_t i = 0; i <= 3; i++)
   {
-      measureSoil(i);
-      debug();
+       measureSoil(i);
+      
+      
   }
+  debug();
+  timers[0] = millis();
   }
-  for (size_t x = 1; x <= 4; x++)
+  for (size_t x = 0; x <= 3; x++)
   {
     timer_checkFunction(x);
   }
-  timers[0] = millis();
   
+  
+}
+
+void IRAM_ATTR button_press(){
+  for (int i=0; i< 4; i++) {
+    if (digitalRead(buttonPin[i]) == LOW) {
+      ValveClose(i);
+    }
+  }
+  
+
 }
 
 
@@ -313,7 +301,11 @@ void setup(void) {
   
   for (int i=0; i< 4; i++) {
   pinMode(relayPin[i], OUTPUT);
+  pinMode(sensors[i], INPUT_PULLUP);
+  pinMode(buttonPin[i], INPUT_PULLUP);
+  attachInterrupt(buttonPin[i],button_press, FALLING);
   }
+  
 
   #if defined(ESP32)
   WiFi.setHostname(hostname);
