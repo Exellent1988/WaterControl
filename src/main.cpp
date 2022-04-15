@@ -160,6 +160,7 @@ void rawVals(Control * sender, int value) {
   
 
 }
+
 void debug_analog(){
 for (int i = 0; i < 4; i++) {
   measuredVal = analogRead(sensors[i]);
@@ -177,7 +178,6 @@ for (int i = 0; i < 4; i++) {
   // logfunction(String(ads1118.getTemperature(),6)+" C");
   }
 }
-
 
 void measureAir(Control * sender, int type) {
   switch (type) {
@@ -254,6 +254,7 @@ void slider4_min(Control * sender, int type) {
   rain_start[3] = sender->value.toInt();
   logfunction("Beregnungs Zone " +String(sender->id) + " untere grenze : "+ rain_start[3] );
 }
+
 void max_raintime_function(Control * sender, int type) {
   max_raintime[(sender->id-27)] = sender->value.toInt()*60*1000;
   logfunction("raintime Zone " +String(sender->id-32) +" gesetzt: "+ max_raintime[(sender->id-27)] );
@@ -269,9 +270,6 @@ void max_raintime_function(Control * sender, int type) {
   mqttClient.publish(mqtt_topic,mqttString );
 
 }
-
-
-
 
 void ValveOpen (int valvenr){
     	pin = relayPin[valvenr];
@@ -320,7 +318,10 @@ void ValveToggle(int valvenr){
       ValveOpen(valvenr);
       }
 }
+
 void selectZone(Control* sender, int value)
+
+// TODO: Switch Sliders and Zone Config by Tab
 {
    logfunction("Select: ID: "+ (sender->id));
     logfunction("Value: " + (sender->value));
@@ -328,12 +329,9 @@ void selectZone(Control* sender, int value)
 }
 void tabcallback(Control* sender, int value)
 {
-   
-   
+  auto active_tab = value;
+  logfunction("Tab: " + active_tab);
 }
-
-
-
 
 void debug(){
     for (int a=0; a<= 4; a++) {
@@ -381,6 +379,7 @@ void IRAM_ATTR button_press(){
   
 
 }
+
 void mqtt_callback(char* topic, byte* message, unsigned int length) {
   // logfunction("Message arrived on topic: ");
   // logfunction(topic);
@@ -450,9 +449,9 @@ void mqtt_setup() {
 
 
      
-// TODO Start on MOISTURE AND STOP ON MOISTURE
+// TODO: Start on MOISTURE AND STOP ON MOISTURE
 
-// TODO STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
+// TODO: STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
 // void saveValues(){
 // serializeJson(json_data, json_buffer);
 
@@ -499,7 +498,6 @@ void loadValues(){
     file.close();
   }
 }
-
 
 void setup_theUI(){
   uint16_t tab0 = ESPUI.addControl(ControlType::Tab, "Control", "Control", None, None, &tabcallback);
