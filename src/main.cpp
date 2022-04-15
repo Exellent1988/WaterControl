@@ -19,6 +19,7 @@
     ADS1118 ads1118(PIN_SPI_SS);
 #endif
 #include <DNSServer.h>
+#include <PubSubClient.h>
 #include <ArduinoOTA.h>
 #include <ESPUI.h>
 #include <Wire.h>
@@ -28,16 +29,27 @@
 const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
+const char* mqtt_server = "YOUR_MQTT_BROKER_IP_ADDRESS";
 
 
-//Creating an ADS1118 object (object's name is ads1118)
-
-
+//WIFI
 const char * ssid = "Exellent_outdoor";
 const char * APId = "ESP-WaterControl";
 const char * password = "Exellenz";
 const char * hostname = "ESP-WaterControl";
-RtcDS1307<TwoWire> Rtc(Wire);
+
+// MQTT
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+const char * mqtt_user = "MQTT_USER";
+const char * mqtt_password = "MQTT_PASSWORD";
+char * mqtt_topic = "Watercontrol/";
+long lastMsg = 0;
+char msg[50];
+char buffer [10];
+
+
+// ESPUI
 uint16_t valve0;
 uint16_t valve1;
 uint16_t valve2;
@@ -48,17 +60,23 @@ uint16_t graphId;
 uint16_t gauge1;
 int pin = 0;
 
+// RTC
+RtcDS1307<TwoWire> Rtc(Wire);
 RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+// Timers and Pins
 long timers[] = {0,0,0,0,0};
 int rain_stop[] = {80,80,80,80,80};
 int rain_start[] = {30, 30,30,30,30};
 long max_raintime[] = {1*60*1000, 2*60*1000, 3*60*1000, 4*60*1000};
+
+// Values
 int measuredVal = 0;
 int soilMoisturePercent = 50;
 int previousSoilMoisturePercent = 50;
 int selectedZone = 0;
 std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
 std::map<int,uint16_t> valvesUI;
+const char* on_off[] = {"OFF", "ON"};
 
 #if defined(ESP32)
   int sensors[] = {35,34,39,36};
@@ -82,8 +100,8 @@ int label_to_int(const char * value)
  return zone_assoc[value];
 }
 
-void logfunction(String text) {
-  Serial.println(text);
+void logfunction(const String &text ) {
+  Serial.print(text);
   ESPUI.updateControlValue(LOG, text);
 }
 
@@ -95,9 +113,15 @@ void measureSoil(int zone) {
   } else if (soilMoisturePercent < 0) {
     logfunction("Error Zone "+ String(zone)+": Moisture too low: "+ String(measuredVal)+"! Please calibrate.");
   } else if (soilMoisturePercent <= 100 &&soilMoisturePercent >= 0) {
-    Serial.print("Feuchtigkeit Zone "+ String(zone)+": ");
-    Serial.print(soilMoisturePercent);
-    Serial.println(" %");
+    mqtt_topic = "Watercontrol/Zone/";
+    strcat(mqtt_topic,"Zone/");
+    itoa(zone, buffer, 1);
+    strcat(mqtt_topic,buffer);
+    strcat(mqtt_topic,"/moisture");
+    mqttClient.publish(mqtt_topic, String(soilMoisturePercent).c_str());
+    logfunction("Feuchtigkeit Zone "+ String(zone)+": ");
+    logfunction(String(soilMoisturePercent));
+    logfunction("\n %");
     ESPUI.addGraphPoint(graphId, soilMoisturePercent);
     ESPUI.updateGauge(gauge1, soilMoisturePercent, -1);
     if (soilMoisturePercent != previousSoilMoisturePercent) {
@@ -113,10 +137,11 @@ void rawVals(Control * sender, int value) {
   measuredVal = analogRead(sensors[selectedZone]);
 
   logfunction("Current value: "+ String(measuredVal));
-  Serial.print("Current Air value: ");
-  Serial.println(airVal);
-  Serial.print("Current Water value: ");
-  Serial.println(waterVal);
+  logfunction("Current Air value: ");
+  logfunction(String(airVal));
+  logfunction("Current Water value: ");
+  logfunction(String(waterVal));
+    
   
 
 }
@@ -125,9 +150,17 @@ for (int i = 0; i < 4; i++) {
   measuredVal = analogRead(sensors[i]);
 
   logfunction("analog redout channel: "+ String(i) +"  val:" + String(measuredVal));
+  char mqttString[8];
+  dtostrf(measuredVal, 1, 2, mqttString);
+  mqtt_topic = "Watercontrol/Zone/";
+  strcat(mqtt_topic,"Zone/");
+  itoa(i, buffer, 1);
+  strcat(mqtt_topic,buffer);
+  strcat(mqtt_topic,"/raw/read");
+  mqttClient.publish(mqtt_topic, mqttString);
+  
   // logfunction(String(ads1118.getTemperature(),6)+" C");
   }
-  delay(1000);
 }
 
 
@@ -137,7 +170,14 @@ void measureAir(Control * sender, int type) {
       measuredVal = analogRead(sensors[selectedZone]);
       airVal = measuredVal;
       logfunction("NEW AIR value: " + String(airVal));
-      
+      char mqttString[8];
+      dtostrf(airVal, 1, 2, mqttString);
+      mqtt_topic = "Watercontrol/Zone/";
+      strcat(mqtt_topic,"Zone/");
+      itoa(selectedZone, buffer, 1);
+      strcat(mqtt_topic,buffer);
+      strcat(mqtt_topic,"/air");
+      mqttClient.publish(mqtt_topic, mqttString);
       break;
   }
 }
@@ -148,6 +188,14 @@ void measureWater(Control * sender, int type) {
       measuredVal = analogRead(sensors[selectedZone]);
       waterVal = measuredVal;
       logfunction("NEW WATER value: " + String(waterVal));
+      char mqttString[8];
+      dtostrf(waterVal, 1, 2, mqttString);
+      mqtt_topic = "Watercontrol/Zone/";
+      strcat(mqtt_topic,"Zone/");
+      itoa(selectedZone, buffer, 1);
+      strcat(mqtt_topic,buffer);
+      strcat(mqtt_topic,"/water");
+      mqttClient.publish(mqtt_topic, mqttString);
       break;
   }
 }
@@ -194,52 +242,68 @@ void slider4_min(Control * sender, int type) {
 void max_raintime_function(Control * sender, int type) {
   max_raintime[(sender->id-27)] = sender->value.toInt()*60*1000;
   logfunction("raintime Zone " +String(sender->id-32) +" gesetzt: "+ max_raintime[(sender->id-27)] );
-}
-
-
-void ValveFunction(Control * sender, int type) {
-  int valveNr = label_to_int(sender->label);
-   pin = relayPin[valveNr];
-   switch (type)
-    {
-    case S_ACTIVE:
-        logfunction("Valve " + String(valveNr+1) + " is ON");
-        digitalWrite(pin, HIGH);
-        timers[valveNr+1] = millis();
-        
-        break;
-
-    case S_INACTIVE:
-        logfunction("Valve " + String(valveNr+1) + " is OFF");
-        digitalWrite(pin, LOW);
-        timers[valveNr+1] = 0;
-    }
- }
-
-void ValveToggle(int valvenr){
-    	pin = relayPin[valvenr];
-      if (digitalRead(pin) == HIGH) {
-       timers[valvenr+1] =0;
-      logfunction("Valve should close: "+String(valvenr));
-      
-      ESPUI.updateSwitcher(valvesUI[valvenr],false);
-      digitalWrite(pin, LOW);
-      } else {
-        logfunction("Valve should open: "+String(valvenr));
-      
-        ESPUI.updateSwitcher(valvesUI[valvenr],false);
-        timers[valvenr+1] = millis();
-      }
+  char mqttString[8];
+  dtostrf(max_raintime[(sender->id-27)], 1, 2, mqttString);
+ mqtt_topic = "Watercontrol/Zone/";
+    strcat(mqtt_topic,"Zone/");
+    itoa((sender->id-27), buffer, 1);
+    strcat(mqtt_topic,buffer);
+    strcat(mqtt_topic,"/raintime");
+    mqttClient.publish(mqtt_topic, String(soilMoisturePercent).c_str());
     
-      
+  mqttClient.publish(mqtt_topic,mqttString );
+
 }
-void ValveClose(int valvenr){
+
+
+
+
+void ValveOpen (int valvenr){
+    	pin = relayPin[valvenr];
+      timers[valvenr+1] =millis();
+      logfunction("Valve should open: "+String(valvenr));
+      mqtt_topic = "Watercontrol/Zone/";
+      strcat(mqtt_topic,"Zone/");
+      itoa(valvenr,buffer,1);
+      strcat(mqtt_topic,buffer);
+      strcat(mqtt_topic,"/Valve");
+      ESPUI.updateSwitcher(valvesUI[valvenr],true);
+      digitalWrite(pin, HIGH);
+      mqttClient.publish(mqtt_topic, on_off[1]);
+      }
+void ValveClose (int valvenr){
     	timers[valvenr+1] =0;
+     mqtt_topic = "Watercontrol/Zone/";
+      strcat(mqtt_topic,"Zone/");
+      itoa(valvenr,buffer,1);
+      strcat(mqtt_topic,buffer);
+      strcat(mqtt_topic,"/Valve");
       logfunction("Valve should close: "+String(valvenr));
+      mqttClient.publish(mqtt_topic, on_off[0]);
       pin = relayPin[valvenr];
       ESPUI.updateSwitcher(valvesUI[valvenr],false);
       digitalWrite(pin, LOW);
       
+}
+void Valve_callback(Control * sender, int type) {
+  int valveNr = label_to_int(sender->label);
+   switch (type)
+    {
+    case S_ACTIVE:
+        ValveOpen(valveNr);
+        break;
+    case S_INACTIVE:
+        ValveClose(valveNr);
+        break;
+    }
+ }
+void ValveToggle(int valvenr){
+    	pin = relayPin[valvenr];
+      if (digitalRead(pin) == HIGH) {
+      ValveClose(valvenr);
+      } else {
+      ValveOpen(valvenr);
+      }
 }
 void selectZone(Control* sender, int value)
 {
@@ -302,16 +366,82 @@ void IRAM_ATTR button_press(){
   
 
 }
+void mqtt_callback(char* topic, byte* message, unsigned int length) {
+  // logfunction("Message arrived on topic: ");
+  // logfunction(topic);
+  // logfunction(". Message: ");
+  String messageTemp;
+  
+  for (int i = 0; i < length; i++) {
+    // logfunction((char)message[i]);
+    messageTemp += (char)message[i];
+  }
+  
+
+  // Feel free to add more if statements to control more GPIOs with MQTT
+
+  // If a message is received on the topic esp32/output, you check if the message is either "on" or "off". 
+  // Changes the output state according to the message
+  if (String(topic) == "Watercontrol/Zone/0/Valve") {
+    if (String(messageTemp) == "ON") {
+      ValveOpen(0);
+    }
+    else if (String(messageTemp) == "OFF") {
+      ValveClose(0);
+    }
+  }
+  if (String(topic) == "Watercontrol/Zone/1/Valve") {
+    if (String(messageTemp) == "ON") {
+      ValveOpen(1);
+    }
+    else if (String(messageTemp) == "OFF") {
+      ValveClose(1);
+    }
+  }
+  if (String(topic) == "Watercontrol/Zone/2/Valve") {
+    if (String(messageTemp) == "ON") {
+      ValveOpen(2);
+    }
+    else if (String(messageTemp) == "OFF") {
+      ValveClose(2);
+    }
+  }
+  if (String(topic) == "Watercontrol/Zone/3/Valve") {
+    if (String(messageTemp) == "ON") {
+      ValveOpen(3);
+    }
+    else if (String(messageTemp) == "OFF") {
+      ValveClose(3);
+    }
+  }
+
+  
+}
+boolean mqtt_reconnect() {
+  // Loop until we're reconnected
+    if (mqttClient.connect("WaterControl", mqtt_user, mqtt_password)) {
+      logfunction("\nconnected");
+      // Subscribe
+      mqttClient.subscribe("Watercontrol");
+      mqttClient.publish("Watercontrol/Status", "Connected");
+    
+  }
+  return mqttClient.connected();
+}
+void mqtt_setup() {
+  mqttClient.setServer(mqtt_server, 1883);
+  mqttClient.setCallback(mqtt_callback);
+}
 
 
      
 // TODO Start on MOISTURE AND STOP ON MOISTURE
 
 // TODO STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
-  void saveValues(){
+void saveValues(){
+}
   
-  }
-  void loadValues(){
+void loadValues(){
   }
 
 void setup_theUI(){
@@ -333,10 +463,10 @@ void setup_theUI(){
   // for(auto const& v : Valves) {
   //   ESPUI.addControl(ControlType::Switcher, v.c_str(), "Open", ControlColor::Wetasphalt, tab0, &ValveFunction);
   // }
-  valvesUI[0] =   ESPUI.addControl(ControlType::Switcher, "Zone 1", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valvesUI[1] =   ESPUI.addControl(ControlType::Switcher, "Zone 2", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valvesUI[2] =   ESPUI.addControl(ControlType::Switcher, "Zone 3", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
-  valvesUI[3] =   ESPUI.addControl(ControlType::Switcher, "Zone 4", "0", ControlColor::Wetasphalt, tab0, &ValveFunction);
+  valvesUI[0] =   ESPUI.addControl(ControlType::Switcher, "Zone 1", "0", ControlColor::Wetasphalt, tab0, &Valve_callback);
+  valvesUI[1] =   ESPUI.addControl(ControlType::Switcher, "Zone 2", "0", ControlColor::Wetasphalt, tab0, &Valve_callback);
+  valvesUI[2] =   ESPUI.addControl(ControlType::Switcher, "Zone 3", "0", ControlColor::Wetasphalt, tab0, &Valve_callback);
+  valvesUI[3] =   ESPUI.addControl(ControlType::Switcher, "Zone 4", "0", ControlColor::Wetasphalt, tab0, &Valve_callback);
 
   // tab 1
   graphId = ESPUI.addControl(ControlType::Graph, "Sensor1", "Humidity", ControlColor::Wetasphalt, tab1);
@@ -378,7 +508,6 @@ void setup_theUI(){
   ESPUI.addControl(ControlType::Number, "Maximale Beregnungszeit in min ZONE4:", "4", ControlColor::Alizarin, tab7, &max_raintime_function);
 }
 
-
 void setup(void) {
   
   Serial.begin(115200);
@@ -405,7 +534,7 @@ void setup(void) {
 
   // try to connect to existing network
   WiFi.begin(ssid, password);
-  Serial.print("\n\nTry to connect to existing network");
+  logfunction("\n\nTry to connect to existing network");
 
   {
     uint8_t timeout = 20;
@@ -413,13 +542,13 @@ void setup(void) {
     // Wait for connection, 10s timeout
     do {
       delay(500);
-      Serial.print(".");
+      logfunction(".");
       timeout--;
     } while (timeout &&WiFi.status() != WL_CONNECTED);
 
     // not connected -> create hotspot
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.print("\n\nCreating hotspot");
+      logfunction("\n\nCreating hotspot");
 
       WiFi.mode(WIFI_AP);
       WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
@@ -429,19 +558,21 @@ void setup(void) {
 
       do {
         delay(500);
-        Serial.print(".");
+        logfunction(".");
         timeout--;
       } while (timeout);
     }
   }
 
-  dnsServer.start(DNS_PORT, "*", apIP);
 
-  Serial.println("\n\nWiFi parameters:");
+  dnsServer.start(DNS_PORT, "*", apIP);
+  Serial.print("\n\n\nWiFi parameters:");
   Serial.print("Mode: ");
-  Serial.println(WiFi.getMode() == WIFI_AP ? "Station" : "Client");
+  Serial.print(WiFi.getMode() == WIFI_AP ? "Station" : "Client");
   Serial.print("IP address: ");
-  Serial.println(WiFi.getMode() == WIFI_AP ? WiFi.softAPIP() : WiFi.localIP());
+  Serial.print(WiFi.getMode() == WIFI_AP ? WiFi.softAPIP() : WiFi.localIP());
+  mqtt_setup();
+
   // Start ADC config 
   // ads1118.begin();
 /* Changing the sampling rate. RATE_8SPS, RATE_16SPS, RATE_32SPS, RATE_64SPS, RATE_128SPS, RATE_250SPS, RATE_475SPS, RATE_860SPS*/
@@ -478,5 +609,10 @@ void loop(void) {
   ArduinoOTA.handle();
   dnsServer.processNextRequest();
   timer_function();
+  mqttClient.loop();
+  long now = millis();
+  if (now - lastMsg > 5000) {
+    lastMsg = now;
+  }
   // debug_analog();
 }
