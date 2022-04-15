@@ -18,6 +18,7 @@
   // static const uint8_t SCK   = PIN_SPI_SCK;
     ADS1118 ads1118(PIN_SPI_SS);
 #endif
+#include <ArduinoJson.h>
 #include <DNSServer.h>
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
@@ -33,17 +34,31 @@ const char* mqtt_server = "YOUR_MQTT_BROKER_IP_ADDRESS";
 
 
 //WIFI
-const char * ssid = "Exellent_outdoor";
+struct wifi_config {
+  char ssid[32];
+  char pass[64];
+} wifi = {
+  "YOUR_WIFI_SSID",
+  "YOUR_WIFI_PASSWORD"
+};
+
 const char * APId = "ESP-WaterControl";
-const char * password = "Exellenz";
 const char * hostname = "ESP-WaterControl";
 
 // MQTT
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-const char * mqtt_user = "MQTT_USER";
-const char * mqtt_password = "MQTT_PASSWORD";
-char * mqtt_topic = "Watercontrol/";
+struct mqtt_config {
+  char user[32];
+  char pass[64];
+  char client_id[32];
+  char topic[32];
+} mqtt = {
+  "YOUR_MQTT_USERNAME",
+  "YOUR_MQTT_PASSWORD",
+  "YOUR_MQTT_CLIENT_ID",
+  "Watercontrol/"
+};
 long lastMsg = 0;
 char msg[50];
 char buffer [10];
@@ -113,7 +128,7 @@ void measureSoil(int zone) {
   } else if (soilMoisturePercent < 0) {
     logfunction("Error Zone "+ String(zone)+": Moisture too low: "+ String(measuredVal)+"! Please calibrate.");
   } else if (soilMoisturePercent <= 100 &&soilMoisturePercent >= 0) {
-    mqtt_topic = "Watercontrol/Zone/";
+    char * mqtt_topic = mqtt.topic;
     strcat(mqtt_topic,"Zone/");
     itoa(zone, buffer, 1);
     strcat(mqtt_topic,buffer);
@@ -152,7 +167,7 @@ for (int i = 0; i < 4; i++) {
   logfunction("analog redout channel: "+ String(i) +"  val:" + String(measuredVal));
   char mqttString[8];
   dtostrf(measuredVal, 1, 2, mqttString);
-  mqtt_topic = "Watercontrol/Zone/";
+  char * mqtt_topic = mqtt.topic;
   strcat(mqtt_topic,"Zone/");
   itoa(i, buffer, 1);
   strcat(mqtt_topic,buffer);
@@ -172,7 +187,7 @@ void measureAir(Control * sender, int type) {
       logfunction("NEW AIR value: " + String(airVal));
       char mqttString[8];
       dtostrf(airVal, 1, 2, mqttString);
-      mqtt_topic = "Watercontrol/Zone/";
+      char * mqtt_topic = mqtt.topic;
       strcat(mqtt_topic,"Zone/");
       itoa(selectedZone, buffer, 1);
       strcat(mqtt_topic,buffer);
@@ -190,7 +205,7 @@ void measureWater(Control * sender, int type) {
       logfunction("NEW WATER value: " + String(waterVal));
       char mqttString[8];
       dtostrf(waterVal, 1, 2, mqttString);
-      mqtt_topic = "Watercontrol/Zone/";
+      char * mqtt_topic = mqtt.topic;
       strcat(mqtt_topic,"Zone/");
       itoa(selectedZone, buffer, 1);
       strcat(mqtt_topic,buffer);
@@ -244,9 +259,9 @@ void max_raintime_function(Control * sender, int type) {
   logfunction("raintime Zone " +String(sender->id-32) +" gesetzt: "+ max_raintime[(sender->id-27)] );
   char mqttString[8];
   dtostrf(max_raintime[(sender->id-27)], 1, 2, mqttString);
- mqtt_topic = "Watercontrol/Zone/";
-    strcat(mqtt_topic,"Zone/");
-    itoa((sender->id-27), buffer, 1);
+  char * mqtt_topic = mqtt.topic;
+  strcat(mqtt_topic,"Zone/");
+  itoa((sender->id-27), buffer, 1);
     strcat(mqtt_topic,buffer);
     strcat(mqtt_topic,"/raintime");
     mqttClient.publish(mqtt_topic, String(soilMoisturePercent).c_str());
@@ -262,7 +277,7 @@ void ValveOpen (int valvenr){
     	pin = relayPin[valvenr];
       timers[valvenr+1] =millis();
       logfunction("Valve should open: "+String(valvenr));
-      mqtt_topic = "Watercontrol/Zone/";
+      char * mqtt_topic = mqtt.topic;
       strcat(mqtt_topic,"Zone/");
       itoa(valvenr,buffer,1);
       strcat(mqtt_topic,buffer);
@@ -273,7 +288,7 @@ void ValveOpen (int valvenr){
       }
 void ValveClose (int valvenr){
     	timers[valvenr+1] =0;
-     mqtt_topic = "Watercontrol/Zone/";
+     char * mqtt_topic = mqtt.topic;
       strcat(mqtt_topic,"Zone/");
       itoa(valvenr,buffer,1);
       strcat(mqtt_topic,buffer);
@@ -419,10 +434,10 @@ void mqtt_callback(char* topic, byte* message, unsigned int length) {
 }
 boolean mqtt_reconnect() {
   // Loop until we're reconnected
-    if (mqttClient.connect("WaterControl", mqtt_user, mqtt_password)) {
+    if (mqttClient.connect(mqtt.client_id, mqtt.user, mqtt.pass)) {
       logfunction("\nconnected");
       // Subscribe
-      mqttClient.subscribe("Watercontrol");
+      mqttClient.subscribe(mqtt.topic);
       mqttClient.publish("Watercontrol/Status", "Connected");
     
   }
@@ -438,11 +453,53 @@ void mqtt_setup() {
 // TODO Start on MOISTURE AND STOP ON MOISTURE
 
 // TODO STORE SETTINGS AS JSON AND LOAD SETTINGS ON BOOT
-void saveValues(){
-}
+// void saveValues(){
+// serializeJson(json_data, json_buffer);
+
+// }
   
 void loadValues(){
+ 
+  if (!LITTLEFS.begin())
+  {
+    Serial.println("Failed to mount LITTLEFS");
   }
+  else
+  {
+    File file = LITTLEFS.open("/options.json", FILE_READ);
+
+    if (!file)
+    {
+      Serial.println("There was an error opening the config file");
+      return;
+    }
+
+    else
+    {
+      Serial.println("File opened!");
+
+      StaticJsonDocument<1024> json_data;
+
+      DeserializationError error = deserializeJson(json_data, file);
+      if (error)
+      {
+        Serial.println("error...");
+      }
+      else
+      {
+        Serial.println("Another winner!");
+        strcpy(wifi.ssid, json_data["WIFIssid"]);
+        strcpy(wifi.pass, json_data["WIFIpass"]);
+        strcpy(mqtt.user, json_data["MQTTUser"]);
+        strcpy(mqtt.pass, json_data["MQTTPass"]);
+      }
+      Serial.println("");
+    }
+
+    file.close();
+  }
+}
+
 
 void setup_theUI(){
   uint16_t tab0 = ESPUI.addControl(ControlType::Tab, "Control", "Control", None, None, &tabcallback);
@@ -533,7 +590,7 @@ void setup(void) {
   
 
   // try to connect to existing network
-  WiFi.begin(ssid, password);
+  WiFi.begin(wifi.ssid, wifi.pass);
   logfunction("\n\nTry to connect to existing network");
 
   {
@@ -564,6 +621,8 @@ void setup(void) {
     }
   }
 
+  // JSON init
+  StaticJsonDocument<200> json_data;
 
   dnsServer.start(DNS_PORT, "*", apIP);
   Serial.print("\n\n\nWiFi parameters:");
