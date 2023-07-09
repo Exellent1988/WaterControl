@@ -589,7 +589,7 @@ void setup(void) {
     pinMode(buttonPin[i], INPUT_PULLUP);
     attachInterrupt(buttonPin[i],button_press, FALLING);
     }
-
+  #endif
   // SETUP RTC 
   #if defined(USE_RTC)
     Wire.begin(21,22);
