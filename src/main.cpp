@@ -29,6 +29,7 @@
 #include <ESPUI.h>
 #include <Wire.h>
 #include <RtcDS1307.h>
+#include <LittleFS.h>
 #include <map>
 
 const byte DNS_PORT = 53;
@@ -463,13 +464,13 @@ void mqtt_setup() {
   
 void loadValues(){
  
-  if (!LITTLEFS.begin())
+  if (!LittleFS.begin())
   {
-    Serial.println("Failed to mount LITTLEFS");
+    Serial.println("Failed to mount LittleFS");
   }
   else
   {
-    File file = LITTLEFS.open("/options.json", FILE_READ);
+    File file = LittleFS.open("/options.json", FILE_READ);
 
     if (!file)
     {
