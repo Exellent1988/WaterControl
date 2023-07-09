@@ -102,9 +102,9 @@ int pin = 0;
   const char* on_off[] = {"OFF", "ON"};
 #endif
 #if defined(ESP32)
-  int sensors[] = {35,34,39,36};
-  int relayPin[] = {0,15,2,4};
-  int buttonPin[] = {11,10,9,13};
+  int sensors[] = {35,34,32,33};
+  int relayPin[] = {11,8,7,6};
+  int buttonPin[] = {11,10,9,14};
   int airVal = 3478;
   int waterVal = 772;
 #else
