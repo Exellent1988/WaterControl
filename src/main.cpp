@@ -103,8 +103,8 @@ int pin = 0;
 #endif
 #if defined(ESP32)
   int sensors[] = {35,34,32,33};
-  int relayPin[] = {11,8,7,6};
-  int buttonPin[] = {11,10,9,14};
+  int relayPin[] = {0,8,7,6};
+  int buttonPin[] = {11,10,9,13};
   int airVal = 3478;
   int waterVal = 772;
 #else
