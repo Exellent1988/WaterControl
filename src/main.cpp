@@ -5,7 +5,11 @@
 #else
   #include <ESP8266WiFi.h>
   #include <ESPAsyncTCP.h>
-  #include <ADS1118.h>
+  #include <ADS1115_WE.h>
+  #include<Wire.h>
+  #define I2C_ADDRESS 0x48
+  #define I2C_SDA (15)
+  #define I2C_SCL (2)  
     // ESP 12-F SPI Definition
   #define PIN_SPI_SS   (9)
   #define PIN_SPI_MOSI (13)
@@ -16,7 +20,7 @@
   // static const uint8_t MOSI  = PIN_SPI_MOSI;
   // static const uint8_t MISO  = PIN_SPI_MISO;
   // static const uint8_t SCK   = PIN_SPI_SCK;
-    ADS1118 ads1118(PIN_SPI_SS);
+  ADS1115_WE adc = ADS1115_WE(I2C_ADDRESS);
 #endif
 #include <ArduinoJson.h>
 #include <DNSServer.h>
@@ -569,21 +573,28 @@ void setup(void) {
   
   // SETUP Pin Modes 
   
+  
+  // SETUP RTC 
+  
   for (int i=0; i< 4; i++) {
   pinMode(relayPin[i], OUTPUT);
-  pinMode(sensors[i], INPUT_PULLUP);
-  pinMode(buttonPin[i], INPUT_PULLUP);
-  attachInterrupt(buttonPin[i],button_press, FALLING);
   }
-  // SETUP RTC 
+  #if defined(ESP32)
+    for (int i=0; i< 4; i++) {
+    pinMode(sensors[i], INPUT_PULLUP);
+    pinMode(buttonPin[i], INPUT_PULLUP);
+    attachInterrupt(buttonPin[i],button_press, FALLING);
+    }
   Wire.begin(21,22);
   Rtc.Begin();
   RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__); 
-
-  #if defined(ESP32)
   WiFi.setHostname(hostname);
   #else
     WiFi.hostname(hostname);
+    Wire.begin(I2C_SDA,I2C_SCL);
+    if(!adc.init()){
+    Serial.println("ADS1115 not connected!");
+    adc.setVoltageRange_mV(ADS1115_RANGE_6144);
   #endif
   
 
@@ -632,7 +643,7 @@ void setup(void) {
 
   // Start ADC config 
   // ads1118.begin();
-/* Changing the sampling rate. RATE_8SPS, RATE_16SPS, RATE_32SPS, RATE_64SPS, RATE_128SPS, RATE_250SPS, RATE_475SPS, RATE_860SPS*/
+  /* Changing the sampling rate. RATE_8SPS, RATE_16SPS, RATE_32SPS, RATE_64SPS, RATE_128SPS, RATE_250SPS, RATE_475SPS, RATE_860SPS*/
     // ads1118.setSamplingRate(ads1118.RATE_8SPS);
 
     /* Changing the input selected. Differential inputs: DIFF_0_1, DIFF_0_3, DIFF_1_3, DIFF_2_3. Single ended input: AIN_0, AIN_1, AIN_2, AIN_3*/
