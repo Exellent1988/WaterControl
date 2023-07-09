@@ -29,7 +29,6 @@
 #include <ESPUI.h>
 #include <Wire.h>
 #include <RtcDS1307.h>
-#include <LittleFS.h>
 #include <map>
 
 const byte DNS_PORT = 53;
