@@ -1,4 +1,4 @@
-
+#include <config.h>
 #if defined(ESP32)
   #include <WiFi.h>
   #include <AsyncTCP.h>
@@ -27,12 +27,14 @@
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 #include <ESPUI.h>
-#include <Wire.h>
-#include <RtcDS1307.h>
+#if defined(USE_RTC)
+  #include <Wire.h>
+  #include <RtcDS1307.h>
+#endif
 #include <map>
 
 const byte DNS_PORT = 53;
-IPAddress apIP(192, 168, 1, 1);
+IPAddress apIP(192, 168, 179, 2);
 DNSServer dnsServer;
 const char* mqtt_server = "YOUR_MQTT_BROKER_IP_ADDRESS";
 
@@ -50,23 +52,24 @@ const char * APId = "ESP-WaterControl";
 const char * hostname = "ESP-WaterControl";
 
 // MQTT
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
-struct mqtt_config {
-  char user[32];
-  char pass[64];
-  char client_id[32];
-  char topic[32];
-} mqtt = {
-  "YOUR_MQTT_USERNAME",
-  "YOUR_MQTT_PASSWORD",
-  "YOUR_MQTT_CLIENT_ID",
-  "Watercontrol/"
-};
-long lastMsg = 0;
-char msg[50];
-char buffer [10];
-
+#if defined(USE_MQTT)
+  WiFiClient espClient;
+  PubSubClient mqttClient(espClient);
+  struct mqtt_config {
+    char user[32];
+    char pass[64];
+    char client_id[32];
+    char topic[32];
+  } mqtt = {
+    "YOUR_MQTT_USERNAME",
+    "YOUR_MQTT_PASSWORD",
+    "YOUR_MQTT_CLIENT_ID",
+    "Watercontrol/"
+  };
+  long lastMsg = 0;
+  char msg[50];
+  char buffer [10];
+#endif
 
 // ESPUI
 uint16_t valve0;
@@ -79,24 +82,25 @@ uint16_t graphId;
 uint16_t gauge1;
 int pin = 0;
 
-// RTC
-RtcDS1307<TwoWire> Rtc(Wire);
-RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
-// Timers and Pins
-long timers[] = {0,0,0,0,0};
-int rain_stop[] = {80,80,80,80,80};
-int rain_start[] = {30, 30,30,30,30};
-long max_raintime[] = {1*60*1000, 2*60*1000, 3*60*1000, 4*60*1000};
+#if defined(USE_RTC)
+  // RTC
+  RtcDS1307<TwoWire> Rtc(Wire);
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+  // Timers and Pins
+  long timers[] = {0,0,0,0,0};
+  int rain_stop[] = {80,80,80,80,80};
+  int rain_start[] = {30, 30,30,30,30};
+  long max_raintime[] = {1*60*1000, 2*60*1000, 3*60*1000, 4*60*1000};
 
-// Values
-int measuredVal = 0;
-int soilMoisturePercent = 50;
-int previousSoilMoisturePercent = 50;
-int selectedZone = 0;
-std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
-std::map<int,uint16_t> valvesUI;
-const char* on_off[] = {"OFF", "ON"};
-
+  // Values
+  int measuredVal = 0;
+  int soilMoisturePercent = 50;
+  int previousSoilMoisturePercent = 50;
+  int selectedZone = 0;
+  std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
+  std::map<int,uint16_t> valvesUI;
+  const char* on_off[] = {"OFF", "ON"};
+#endif
 #if defined(ESP32)
   int sensors[] = {35,34,39,36};
   int relayPin[] = {0,15,2,4};
@@ -585,9 +589,14 @@ void setup(void) {
     pinMode(buttonPin[i], INPUT_PULLUP);
     attachInterrupt(buttonPin[i],button_press, FALLING);
     }
-  Wire.begin(21,22);
-  Rtc.Begin();
-  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__); 
+
+  // SETUP RTC 
+  #if defined(USE_RTC)
+    Wire.begin(21,22);
+    Rtc.Begin();
+    RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__); 
+  #endif
+  #if defined(ESP32)
   WiFi.setHostname(hostname);
   #else
     WiFi.hostname(hostname);
