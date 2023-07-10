@@ -86,7 +86,7 @@ int pin = 0;
   // RTC
   RtcDS1307<TwoWire> Rtc(Wire);
   RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
-  // Timers and Pins
+#endif // Timers and Pins
   long timers[] = {0,0,0,0,0};
   int rain_stop[] = {80,80,80,80,80};
   int rain_start[] = {30, 30,30,30,30};
@@ -100,7 +100,7 @@ int pin = 0;
   std::map<std::string, int> zone_assoc { {"Zone 1", 0}, {"Zone 2", 1}, {"Zone 3", 2}, {"Zone 4", 3} };
   std::map<int,uint16_t> valvesUI;
   const char* on_off[] = {"OFF", "ON"};
-#endif
+
 #if defined(ESP32)
   int sensors[] = {35,34,32,33};
   int relayPin[] = {0,8,7,6};
