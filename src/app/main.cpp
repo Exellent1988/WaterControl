@@ -1,4 +1,10 @@
-#include <config.h>
+// CONFIG
+#define USE_RTC false
+#define USE_MQTT true
+
+
+
+// CONFIG END
 #if defined(ESP32)
   #include <WiFi.h>
   #include <AsyncTCP.h>
@@ -22,19 +28,21 @@
   // static const uint8_t SCK   = PIN_SPI_SCK;
   ADS1115_WE adc = ADS1115_WE(I2C_ADDRESS);
 #endif
+
 #include <ArduinoJson.h>
 #include <DNSServer.h>
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 #include <ESPUI.h>
+#include <map>
+
 #if defined(USE_RTC)
   #include <Wire.h>
   #include <RtcDS1307.h>
 #endif
-#include <map>
 
 const byte DNS_PORT = 53;
-IPAddress apIP(192, 168, 179, 2);
+IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
 const char* mqtt_server = "YOUR_MQTT_BROKER_IP_ADDRESS";
 
@@ -380,7 +388,7 @@ void  timer_function(void){
 
 void IRAM_ATTR button_press(){
   for (int i=0; i< 4; i++) {
-    if (digitalRead(buttonPin[i]) == LOW) {
+    if (digitalRead(buttonPin[i]) == HIGH) {
       ValveToggle(i);
     }
   }
@@ -586,8 +594,8 @@ void setup(void) {
   #if defined(ESP32)
     for (int i=0; i< 4; i++) {
     pinMode(sensors[i], INPUT_PULLUP);
-    pinMode(buttonPin[i], INPUT_PULLUP);
-    attachInterrupt(buttonPin[i],button_press, FALLING);
+    pinMode(buttonPin[i], INPUT_PULLDOWN);
+    attachInterrupt(buttonPin[i],button_press, RISING);
     }
   #endif
   // SETUP RTC 
